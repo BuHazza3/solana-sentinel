@@ -1,7 +1,7 @@
 // App-shell cache only (works under any sub-path, e.g. /solana-sentinel/). Live data never goes through here:
 // it arrives over a WebSocket / cross-origin fetch to the relay, which the service worker does not touch.
 // The page itself is network-first and bypasses the HTTP cache, so a new version shows up on the next open.
-const C = 'sentinel-pages-v4';
+const C = 'sentinel-pages-v5';
 const SHELL = ['./', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/favicon.png'];
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(C).then(c => c.addAll(SHELL.map(u => new Request(u, {cache: 'reload'})))).catch(() => {})); });
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k)))).then(() => self.clients.claim())));

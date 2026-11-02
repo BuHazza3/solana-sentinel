@@ -1,0 +1,188 @@
+# PUMP.FUN-ONLY sentinel harness (PAPER ONLY). Bonding-curve and graduated tokens are tracked as separate buckets.
+# Sentinel strategy-validation harness (PAPER ONLY). Three independent 1-SOL paper accounts are run on the
+# same live data at the same time, plus two baselines (hold SOL, no trade).
+#   ORIGINAL   = SPEC.txt rules as written (A, B, C + F regime gate)
+#   REVISED    = SPEC_REVISIONS.md rules (A, B, C + F, plus the LS launch-sniper tier)
+#   V1_SNIPER  = the user's first loose rules (rug filter, then scanner/snipe/copy entries)
+[general]
+paper = true
+start_balance_sol = 1.0
+discovery_interval_seconds = 30
+reevaluate_minutes = 5
+monitor_interval_seconds = 6
+latency_slippage_bps = 100        # extra adverse move on each fill (quote -> landing)
+max_slippage_bps = 500
+ata_rent_sol = 0.00203928         # refunded when the token account is closed after the sell
+min_liq_to_fetch_report = 3000
+min_activity_buys_5m = 5          # skip dead tokens before spending API calls
+
+[fees.normal]                     # A/B/C swaps
+base_fee_sol = 0.000005
+priority_fee_sol = 0.0001
+jito_tip_sol = 0.0
+[fees.snipe]                      # contested new-launch swaps
+base_fee_sol = 0.000005
+priority_fee_sol = 0.0005
+jito_tip_sol = 0.0001
+
+[regime]                          # Strategy F: stay in cash when the SOL trend is bad
+sol_h1_min_pct = -1.5
+sol_h6_min_pct = -3.0
+sol_h24_min_pct = -6.0
+emergency_exit_h1_pct = -3.0
+
+[wallets]                         # followed for A/B (see README/SPEC_REVISIONS for evidence)
+follow = [
+  { address = "4xY9T1Q7foJzJsJ6YZDSsfp9zkzeZsXnxd45SixduMmr", label = "zeropnl", evidence = "verified on-chain (pump.fun sample): +115.7 SOL, 27 closed, 96% win, 6.8h, 5s median hold" },
+  { address = "78N177fzNJpp8pG49xDv1efYcTMSzo9tPTKEA9mAVkh2", label = "Sheep", evidence = "verified on-chain (pump.fun sample): +7.8 SOL, 6 closed, 100% win, 2.0h, 7s median hold" },
+  { address = "4fZFcK8ms3bFMpo1ACzEUz8bH741fQW4zhAMGd5yZMHu", label = "Rilsio", evidence = "verified on-chain (pump.fun sample): +16.2 SOL, 23 closed, 57% win, 24.2h, 99s median hold" },
+  { address = "xyzfhxfy8NhfeNG3Um3WaUvFXzNuHkrhrZMD8dsStB6", label = "Gasp", evidence = "verified on-chain (pump.fun sample): +50.0 SOL, 40 closed, 28% win, 4.8h, 22s median hold" },
+  { address = "2X4H5Y9C4Fy6Pf3wpq8Q4gMvLcWvfrrwDv2bdR8AAwQv", label = "Orange", evidence = "verified on-chain (pump.fun sample): +50.9 SOL, 5 closed, 40% win, 4.8h, 170s median hold" },
+  { address = "5YRgrP3mjGzrzirYYN5HAQH19cTYREYwGxW6XRJQUzij", label = "slingoor", evidence = "unverified: leaderboards Subglow 30d +24,263 SOL 63%; kolscan 1d +573 SOL" },
+  { address = "4vw54BmAogeRV3vPKWyFet5yf8DTLcREzdSzx4rw9Ud9", label = "decu", evidence = "unverified: leaderboards Subglow 30d +3,219 SOL; Alphalumina +$232.9K 66.5%" },
+  { address = "Bi4rd5FH5bYEN8scZ7wevxNZyNmKHdaBcvewdPFxYdLt", label = "theo", evidence = "unverified: leaderboards Subglow 30d +1,504 SOL; Alphalumina +$170.0K" },
+  { address = "ardinRsN1mNYVeoJWTBsWeYeXvuR9UUDGMsCDKpb6AT", label = "trunoest", evidence = "unverified: leaderboards Subglow 30d +1,582 SOL; Alphalumina +$217.3K" },
+  { address = "BQVz7fQ1WsQmSTMY3umdPEPPTm1sdcBcX9sP7o6kPRmB", label = "Limfork", evidence = "unverified: leaderboards Subglow 30d +662 SOL; Alphalumina +$130.6K" },
+  { address = "CyaE1VxvBrahnPWkqm5VsdCvyS2QmNht2UFrKJHga54o", label = "Cented", evidence = "unverified: leaderboards Subglow 30d +2,343 SOL 44%" },
+  { address = "B32QbbdDAyhvUQzjcaM5j6ZVKwjCxAwGH5Xgvb9SJqnC", label = "Kadenox", evidence = "unverified: leaderboards Subglow 30d +831 SOL 51%" },
+]
+poll_seconds = 30
+min_leader_buy_sol = 0.3
+multi_whale_window_minutes = 60
+
+# ------------------------------------------------------------------ ORIGINAL SPEC
+[accounts.ORIGINAL]
+strategies = ["A", "B", "C"]
+use_regime_gate = true
+risk_per_trade_pct = 0.5
+max_position_pct = 2.0
+min_position_sol = 0.005
+max_concurrent = 3
+daily_loss_pct = 2.0
+weekly_loss_pct = 5.0
+max_drawdown_pct = 10.0
+max_rug_score = 20
+min_rr = 2.0
+[accounts.ORIGINAL.crit]
+min_lp_locked_pct = 90
+max_top10_pct = 30
+max_single_pct = 10
+max_round_trip_loss_pct = 10
+veto_clmm_only = true
+max_dev_hold_pct = 10
+max_bundle_pct = 20
+serial_launcher_coins = 20
+
+# ------------------------------------------------------------------ REVISED SPEC
+[accounts.REVISED]
+strategies = ["A", "B", "C", "LS"]
+use_regime_gate = true            # applies to A/B/C; LS has its own short-hold rules
+risk_per_trade_pct = 1.5          # equity at risk via the stop (SL% + round-trip cost)
+max_position_pct = 10.0           # ~0.1 SOL on 1 SOL
+min_position_sol = 0.03
+max_concurrent = 3
+daily_loss_pct = 5.0
+weekly_loss_pct = 10.0
+max_drawdown_pct = 15.0
+max_rug_score = 20
+min_rr = 2.0
+[accounts.REVISED.crit]
+min_lp_locked_pct = 90
+max_top10_pct = 30
+max_single_pct = 10
+max_round_trip_loss_pct = 10
+veto_clmm_only = true
+max_dev_hold_pct = 10
+max_bundle_pct = 20
+serial_launcher_coins = 20
+[accounts.REVISED.ls]             # launch-sniper tier
+max_rug_score = 40
+tier_capital_pct = 20             # at most 0.2 SOL of the 1 SOL in this tier
+position_sol = 0.05
+max_concurrent = 1
+max_age_minutes = 30
+min_liquidity_usd = 4000           # RugCheck curve liquidity (typ. $3-7k on curve); real exit cost gated by Jupiter round-trip quote
+min_progress_pct = 10
+max_progress_pct = 85
+min_buys_5m = 25
+min_buy_sell_ratio = 1.3
+stop_loss_pct = 10
+take_profit_pct = 25
+trailing_activate_pct = 12
+trailing_stop_pct = 8
+max_hold_minutes = 5
+[accounts.REVISED.ls.crit]        # critical vetoes still apply
+min_lp_locked_pct = 90
+max_top10_pct = 50
+max_single_pct = 20
+max_round_trip_loss_pct = 12
+veto_clmm_only = true
+max_dev_hold_pct = 20
+max_bundle_pct = 40
+serial_launcher_coins = 20
+
+# ------------------------------------------------------------------ USER'S ORIGINAL LOOSE RULES
+[accounts.V1_SNIPER]
+strategies = ["V1"]
+use_regime_gate = false
+position_pct = 15
+max_position_sol = 0.15
+min_position_sol = 0.05
+max_concurrent = 3
+
+# ------------------------------------------------------------------ strategy signal + exit rules
+[strategy.A]                      # smart money following (pump.fun tokens only)
+min_liquidity_usd = 30000          # graduated
+min_liquidity_bonding_usd = 4000
+max_m5_pump_pct = 20              # whale entry no longer achievable if price already ran this much
+stop_loss_pct = 12
+take_profit_pct = 40
+breakeven_at_pct = 15
+trailing_activate_pct = 20
+trailing_stop_pct = 10
+max_hold_minutes = 60
+liq_drop_exit_pct = 30
+fees = "normal"
+[strategy.B]                      # multi-whale confirmation (>=2 distinct followed wallets in window)
+min_wallets = 2
+min_liquidity_usd = 30000
+min_liquidity_bonding_usd = 4000
+max_m5_pump_pct = 25
+stop_loss_pct = 12
+take_profit_pct = 40
+breakeven_at_pct = 15
+trailing_activate_pct = 20
+trailing_stop_pct = 10
+max_hold_minutes = 90
+liq_drop_exit_pct = 30
+fees = "normal"
+[strategy.C]                      # momentum confirmation
+min_liquidity_usd = 30000          # graduated bucket
+min_liquidity_bonding_usd = 4000   # bonding bucket
+min_age_minutes = 30               # graduated
+bonding_min_age_minutes = 10
+bonding_min_progress_pct = 30
+bonding_min_buys_5m = 20
+bonding_min_buy_sell_ratio = 1.3
+min_vol_liq_h1 = 0.5
+min_buy_sell_ratio_h1 = 1.15
+max_h1_pct = 150
+min_score = 0.6
+stop_loss_pct = 8
+take_profit_pct = 28
+breakeven_at_pct = 12
+trailing_activate_pct = 15
+trailing_stop_pct = 7
+max_hold_minutes = 45
+liq_drop_exit_pct = 25
+fees = "normal"
+[strategy.LS]
+fees = "snipe"
+liq_drop_exit_pct = 40
+[strategy.V1]                     # the user's first rules (config.toml defaults)
+stop_loss_pct = 20
+take_profit_pct = 40
+trailing_activate_pct = 20
+trailing_stop_pct = 12
+max_hold_minutes = 20
+fees = "snipe"

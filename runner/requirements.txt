@@ -1,0 +1,8 @@
+# pinned, minimal (paper bots + headless app server + encrypted relay)
+requests==2.34.2
+fastapi==0.162.0
+starlette==1.10.0
+pydantic==2.14.2
+uvicorn==0.54.0
+paho-mqtt==2.1.0
+cryptography==43.0.0

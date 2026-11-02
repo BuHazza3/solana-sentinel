@@ -249,7 +249,7 @@ let S = null, ACCT = localStorage.getItem('sentinel_acct') || 'REVISED', RANGE =
 let first = true, lastMsg = 0;
 const ACCTS = [['REVISED', 'Latest rules'], ['ORIGINAL', 'Original'], ['V1_SNIPER', 'V1 sniper'], ['M4', 'M4 Momentum']];
 // service worker: app shell cache; when a new version takes over, reload once so the new app shows
-const APP_VERSION = 'v4';
+const APP_VERSION = 'v5';
 // ---------- updates: new versions show up on the next open/return to the app ----------
 let swReg = null, reloading = false;
 function hardReload(v) {
@@ -420,11 +420,19 @@ function render(anim) {
      <div class="s">${q.trades ? usdS(q.pnl_sol, px) + ' · ' : ''}${q.trades} trades · ${q.win_rate == null ? 'win n/a' : Math.round(q.win_rate) + '% win'}</div></div>`; }).join('')}</div>`
     : '<div class="empty">This run does not split by pump.fun phase.</div>';
   renderTrades(); renderAct(); renderAgents(); renderRules(); renderWallets();
-  $('#foot').innerHTML = `Run ${esc(S.run)} · bot ${S.bot_alive ? 'running' : 'not running'} · log updated ${ago(S.log_mtime)}` + (S.accounts.M4 ? ` · M4 ${S.accounts.M4.alive ? 'running' : 'not running'}` : '') + '<br>' +
+  $('#foot').innerHTML = `Run ${esc(S.run)} · bot ${S.bot_alive ? 'running' : 'not running'} · log updated ${ago(S.log_mtime)}` + (S.accounts.M4 ? ` · M4 ${S.accounts.M4.alive ? 'running' : 'not running'}` : '') + runnerLine() + '<br>' +
     (S.last_cycle ? `Last scan: ${S.last_cycle.found} tokens found, ${S.last_cycle.evaluated} checked · market ${esc(S.last_cycle.regime)}` : '') +
     `<br>Times are Dubai time (UTC+4). Unrealized values are Jupiter sell quotes. Tap any token for its chart.<br><span class="ver">App ${APP_VERSION} · pull down or tap ↻ to refresh</span>`;
   if (SH.kind) refreshSheet();
   notify();
+}
+function runnerLine() {
+  const R = S.runner; if (!R) return '';
+  const hb = Date.now() / 1000 - R.heartbeat, hbS = hb < 90 ? Math.round(hb) + 's ago' : hb < 5400 ? Math.round(hb / 60) + 'm ago' : Math.round(hb / 3600) + 'h ago';
+  const src = Object.entries(R.sources || {}), bad = src.filter(([, v]) => !v.ok).map(([k]) => k);
+  const ph = R.phase === 'handover' ? ' · handing over to the next runner (a few minutes)' : hb > 600 ? ' · <b class="dn">no heartbeat, runner may be between jobs</b>' : '';
+  return `<br>Runner: ${esc(R.host)} · heartbeat ${hbS}${ph} · next handover ${tDubai(R.handover_at)}` +
+    (src.length ? ` · data sources ${bad.length ? '<b class="dn">blocked: ' + esc(bad.join(', ')) + '</b>' : 'all OK'}` : '');
 }
 function renderTrades() {
   if (!S) return; const A = S.accounts[ACCT], px = S.sol_usd;

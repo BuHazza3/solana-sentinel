@@ -1,0 +1,84 @@
+# M4 MOMENTUM (fourth strategy), PAPER ONLY. Runs as its own process (m4_momentum.py) with its own 1 SOL paper account,
+# its own log (data/m4_momentum_M*.log), trades (data/m4_trades.csv) and database (data/m4_momentum.db).
+# Live data: pump.fun API, DexScreener, RugCheck, Jupiter quotes, public RPC (copy wallets). Only fills are simulated.
+[general]
+paper = true
+start_balance_sol = 1.0
+discovery_interval_seconds = 15     # pump.fun "new" + "active" lists
+reevaluate_seconds = 75             # re-check the same token at most this often
+monitor_interval_seconds = 3        # price check for open positions
+latency_slippage_bps = 100          # extra adverse move on each fill
+max_slippage_bps = 500
+ata_rent_sol = 0.00203928           # refunded when the token account is closed after the final sell
+fee_base_sol = 0.000005             # same "snipe" fee profile as LS / V1
+fee_priority_sol = 0.0005
+fee_jito_sol = 0.0001
+
+[risk]
+position_sol = 0.05                 # fixed paper size per trade
+max_concurrent = 3
+min_cash_reserve_sol = 0.05
+halt_below_equity_sol = 0.70        # no new entries if the account falls 30% (open positions still managed)
+
+[entry]                             # "new token with real volume and trading"
+max_age_minutes = 30                # since pump.fun launch
+max_age_minutes_multi_leader = 60   # 2+ tracked wallets bought it: allow slightly older tokens
+min_mcap_usd = 6000
+max_mcap_usd = 2000000
+min_vol_5m_usd = 4000
+min_trades_5m = 60                  # buys + sells
+min_buy_sell_ratio_5m = 1.25
+min_price_change_5m_pct = 3         # rising
+max_price_change_5m_pct = 120       # already vertical: skip (chasing)
+max_price_change_1h_pct = 600
+min_unique_traders = 25             # in the last 100 pump.fun trades
+min_mcap_vs_ath_pct = 60            # crashed from ATH: skip if mcap < 60% of its all-time high
+bonding_min_progress_pct = 15
+bonding_max_progress_pct = 97
+graduated_min_liquidity_usd = 15000
+max_fill_vs_mark_pct = 25          # Jupiter fill price more than 25% above the DEX price = data lagging / chasing: skip
+max_round_trip_loss_pct = 8         # Jupiter buy+sell quote at 0.05 SOL
+max_pump_rug_score = 45             # riskscore.pump_score (0..100, higher = riskier)
+
+[copy]                              # tracked wallets = [wallets].follow in pump_sentinel.toml
+enabled = true
+poll_seconds = 40
+min_leader_buy_sol = 0.3
+window_minutes = 20
+# one tracked wallet bought >= 0.3 SOL in the window: relaxed activity floor (anti-rug checks unchanged)
+leader_min_vol_5m_usd = 2000
+leader_min_trades_5m = 30
+leader_min_buy_sell_ratio_5m = 1.10
+leader_min_price_change_5m_pct = -5
+# 2+ tracked wallets in the window: strongest signal
+multi_min_buy_sell_ratio_5m = 1.0
+exit_when_leader_sells = true       # a wallet that triggered/confirmed the entry sells -> sell all
+
+[antirug]                           # checked before EVERY entry; each failure is logged as the skip reason
+require_mint_authority_revoked = true
+require_freeze_authority_revoked = true
+max_dev_hold_pct = 8                # dev buys - dev sells, % of supply
+max_dev_sold_pct_of_buys = 50       # dev dumping
+max_top10_pct = 35                  # excluding bonding curve / pool / program accounts
+max_single_holder_pct = 12
+max_bundle_pct = 15                 # same-block launch buys (sniper/bundle cluster), % of supply
+max_launch_block_buyers = 8
+serial_launcher_coins = 10          # dev launched >= 10 coins and none graduated
+max_rugcheck_score = 50             # RugCheck score_normalised (graduated and bonding)
+reject_rugcheck_danger = true       # any RugCheck "danger" risk (e.g. creator history of rugged tokens)
+min_lp_locked_pct = 90              # graduated AMM pools
+max_insiders = 20                   # RugCheck graphInsidersDetected
+
+[exit]
+stop_loss_pct = 20                  # full position, from entry, until initials are pulled
+initials_at_x = 2.0                 # TP1: at 2x entry sell just enough to recover the SOL put in (incl. all fees) ~ 50%+
+breakeven_after_initials = true     # the moonbag's stop is never below the entry price
+moonbag_trail_pct = 30              # moonbag: trailing stop 30% below the highest price since TP1
+moonbag_trail_after_leader_sell_pct = 15   # a copied wallet sells after TP1 -> tighten the trail
+moonbag_cap_x = 5.0                 # hard cap: sell all of the moonbag at 5x entry
+max_hold_minutes = 40               # before TP1
+moonbag_max_hold_minutes = 120      # after TP1 (house money), counted from entry
+price_lost_seconds = 120            # no price this long -> exit
+liq_drop_exit_pct = 50
+dead_after_minutes = 8              # held this long and <5 trades in 5m -> exit as dead (stale volume)
+dead_max_trades_5m = 5
