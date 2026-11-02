@@ -188,6 +188,12 @@ html.lock,html.lock body{overflow:hidden}
 .hi .mid b{font-size:13.5px}.hi .rt b{font-size:13.5px}
 .note{color:var(--mut);font-size:11.5px;line-height:1.5;margin-top:16px;text-align:center}
 .ag .h .chev{margin-left:4px}
+.sw{flex:none;position:relative;width:46px;height:28px;border:0;border-radius:99px;background:rgba(255,255,255,.14);margin-left:8px;cursor:pointer;transition:background .2s}
+.sw:after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.4);transition:transform .22s cubic-bezier(.2,.9,.3,1.2)}
+.sw.on{background:var(--g)}.sw.on:after{transform:translateX(18px)}.sw.pend{opacity:.55;animation:pulse 1s infinite}.sw.ro{cursor:default;opacity:.8}
+.mst{display:flex;align-items:center;gap:10px}.mst .mid b{font-size:15.5px}
+.pl{display:grid;grid-template-columns:1fr auto auto auto;gap:4px 10px;font-size:12.5px;margin-top:8px;align-items:center}.pl .h{color:var(--mut);font-size:10.5px}.pl b{font-weight:600}
+.lg2 p{margin:3px 0;font-size:12.5px;color:#c9c9d2}
 .m4s{display:block;margin-top:3px;width:max-content;max-width:100%;font-size:11px;font-weight:600;color:var(--mut);background:rgba(255,255,255,.06);padding:2px 7px;border-radius:7px}.m4s.ok{color:#ffd84d;background:rgba(255,216,77,.12)}
 </style>
 </head>
@@ -230,7 +236,7 @@ html.lock,html.lock body{overflow:hidden}
   <section class="pane" id="p-trades"><h3>Bonding curve vs graduated</h3><div id="split"></div><h3>Trades <span id="tSum"></span></h3><div class="seg" id="tSeg" style="margin-top:6px"><button data-r="all" class="on">All</button><button data-r="open">Open</button><button data-r="win">Wins</button><button data-r="loss">Losses</button><button data-r="best">Best</button></div><div class="chips" id="tAg"></div><div id="allTrades"></div></section>
   <section class="pane" id="p-activity"><h3>Activity</h3><div class="seg" id="actSeg" style="margin-top:6px"><button data-f="all" class="on">All</button><button data-f="trade">Trades</button><button data-f="copy">Copy signals</button><button data-f="skip">Skipped</button></div><div id="act"></div></section>
   <section class="pane" id="p-agents"><h3>Agents</h3><div id="agents"></div><h3>Followed wallets <span class="mut" style="font-size:12px;font-weight:500" id="wN"></span></h3><div id="wallets"></div></section>
-  <section class="pane" id="p-rules"><h3>Current rules <span class="mut" style="font-size:12px;font-weight:500">REVISED</span></h3><div id="rules"></div></section>
+  <section class="pane" id="p-rules"><h3>Current rules <span class="mut" style="font-size:12px;font-weight:500">V1 &amp; S5</span></h3><div id="rules"></div></section>
   <div class="foot" id="foot"></div>
 </div>
 
@@ -245,11 +251,11 @@ html.lock,html.lock body{overflow:hidden}
 <script>
 // ===== UI (shared by the GitHub Pages app and the local app). READ-ONLY: no trade, wallet or deposit actions. =====
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
-let S = null, ACCT = localStorage.getItem('sentinel_acct') || 'REVISED', RANGE = 0, AF = 'all', TF = 'all', TA = 'all', seen = null, shown = {bal: null};
+let S = null, ACCT = ['V1', 'S5'].includes(localStorage.getItem('sentinel_acct')) ? localStorage.getItem('sentinel_acct') : 'V1', RANGE = 0, AF = 'all', TF = 'all', TA = 'all', seen = null, shown = {bal: null};
 let first = true, lastMsg = 0;
-const ACCTS = [['REVISED', 'Latest rules'], ['ORIGINAL', 'Original'], ['V1_SNIPER', 'V1 sniper'], ['M4', 'M4 Momentum'], ['S5', 'S5 Quant']];
+const ACCTS = [['V1', 'V1 Sniper'], ['S5', 'S5 Quant']];
 // service worker: app shell cache; when a new version takes over, reload once so the new app shows
-const APP_VERSION = 'v6';
+const APP_VERSION = 'v7';
 // ---------- updates: new versions show up on the next open/return to the app ----------
 let swReg = null, reloading = false;
 function hardReload(v) {
@@ -330,6 +336,7 @@ function doCopy(btn, t) { copyText(t).then(ok => { tick(); pill(ok ? '✓ Addres
 // ---------- global taps ----------
 // delegated taps are bound to real containers (not document): iOS WebKit only turns a tap into a click when an ancestor below <body> listens for clicks
 const onTap = e => {
+  const w = near(e, '[data-sw]'); if (w) { e.preventDefault(); e.stopPropagation(); tick(); flip(w); return; }
   const c = near(e, '[data-copy]'); if (c) { e.preventDefault(); e.stopPropagation(); doCopy(c, c.dataset.copy); return; }
   const g = near(e, '[data-go]'); if (g) { e.preventDefault(); tick(); go(g.dataset.go); if (g.dataset.tf) setTF(g.dataset.tf); return; }
   const t = near(e, '[data-tok]'); if (t) { tick(); openToken(t.dataset.tok, t.dataset.ref, t.dataset.acct); return; }
@@ -391,7 +398,7 @@ function closeRow(x, px) { const bg = x.pnl_pct >= 20;
   <div class="rt"><b class="${cls(x.pnl_sol)}">${sgn(x.pnl_sol)} SOL</b><span class="${cls(x.pnl_sol)}">${usdS(x.pnl_sol, x.sol_usd || px)} · ${x.pnl_pct >= 0 ? '+' : ''}${x.pnl_pct.toFixed(1)}%</span></div></div>`; }
 function holdRow(h, px) {
   return `<div class="item tap hold" data-tok="${esc(h.mint)}" data-ref="${esc(h.id || '')}">${av(h.symbol, h.img)}<div class="mid"><b>${esc(h.symbol)}${phT(h.phase)}</b>
-    <span>${esc(h.strategy_name)} · in ${f4(h.size_sol)} SOL · ${hold(S.now - h.opened)}</span>${h.stage ? `<span class="m4s ${h.stage === 'initials_pulled' ? 'ok' : ''}">${h.stage === 'initials_pulled' ? '💰 Initials pulled · moonbag ' + Math.round(h.left_pct || 0) + '%' : 'Stop −' + ((h.exit_plan || {}).stop_loss_pct || 20) + '% · initials at ' + ((h.exit_plan || {}).initials_at_x || 2) + 'x'}</span>` : ''}${copyChip(h.mint)}</div>
+    <span>${esc(h.strategy_name)} · in ${f4(h.size_sol)} SOL · ${hold(S.now - h.opened)}</span>${h.stage ? `<span class="m4s ${h.stage === 'initials_pulled' ? 'ok' : ''}">${h.stage === 'initials_pulled' ? '💰 Initials pulled · moonbag ' + Math.round(h.left_pct || 0) + '%' : 'Stop −' + ((h.exit_plan || {}).stop_loss_pct || 20) + '% · initials at ' + ((h.exit_plan || {}).initials_at_x || 2) + 'x'}</span>` : ''}${h.status ? `<span class="m4s">${esc(h.status)}</span>` : ''}${copyChip(h.mint)}</div>
     <div class="rt">${h.value_sol == null ? `<b class="mut">n/a</b><span class="mut">no sell quote</span>` :
      `<b>${f4(h.value_sol)} SOL</b><span class="${cls(h.upnl_sol)}">${usdS(h.upnl_sol, px)} · ${h.upnl_pct >= 0 ? '+' : ''}${h.upnl_pct.toFixed(1)}%</span>`}</div></div>`; }
 
@@ -413,14 +420,14 @@ function render(anim) {
   $('#hold').innerHTML = A.holdings.length ? A.holdings.map(h => holdRow(h, px)).join('')
     : `<div class="empty">No tokens held right now. ${A.halt ? 'Risk breaker: ' + esc(A.halt) : 'Cash is waiting for a setup that passes every check.'}</div>`;
   $('#recent').innerHTML = A.closes.length ? A.closes.slice(0, 5).map(x => closeRow(x, px)).join('') : '<div class="empty">No closed trades yet in this run.</div>';
-  $('#modeTag').textContent = S.mode === 'pump' ? ' · pump.fun only' : ' · all Solana tokens';
+  $('#modeTag').textContent = ' · pump.fun only';
   const P = A.phases;
   $('#split').innerHTML = P ? `<div class="split">${['bonding', 'graduated'].map(k => { const q = P[k];
     return `<div class="stat"><div class="k">${k === 'bonding' ? 'Bonding curve' : 'Graduated'}</div><div class="v ${q.trades ? cls(q.pnl_sol) : ''}">${q.trades ? sgn(q.pnl_sol) : '0'} <small style="font-size:12px">SOL</small></div>
      <div class="s">${q.trades ? usdS(q.pnl_sol, px) + ' · ' : ''}${q.trades} trades · ${q.win_rate == null ? 'win n/a' : Math.round(q.win_rate) + '% win'}</div></div>`; }).join('')}</div>`
     : '<div class="empty">This run does not split by pump.fun phase.</div>';
   renderTrades(); renderAct(); renderAgents(); renderRules(); renderWallets();
-  $('#foot').innerHTML = `Run ${esc(S.run)} · bot ${S.bot_alive ? 'running' : 'not running'} · log updated ${ago(S.log_mtime)}` + (S.accounts.M4 ? ` · M4 ${S.accounts.M4.alive ? 'running' : 'not running'}` : '') + (S.accounts.S5 ? ` · S5 ${S.accounts.S5.alive ? 'running' : 'not running'}` : '') + runnerLine() + '<br>' +
+  $('#foot').innerHTML = `Run ${esc(S.run)} · ` + Object.entries(S.accounts).map(([k, a]) => `${k} ${a.alive ? 'running' : '<b class="dn">not running</b>'}`).join(' · ') + ` · updated ${ago(S.log_mtime)}` + runnerLine() + '<br>' +
     (S.last_cycle ? `Last scan: ${S.last_cycle.found} tokens found, ${S.last_cycle.evaluated} checked · market ${esc(S.last_cycle.regime)}` : '') +
     `<br>Times are Dubai time (UTC+4). Unrealized values are Jupiter sell quotes. Tap any token for its chart.<br><span class="ver">App ${APP_VERSION} · pull down or tap ↻ to refresh</span>`;
   if (SH.kind) refreshSheet();
@@ -438,7 +445,7 @@ function renderTrades() {
   if (!S) return; const A = S.accounts[ACCT], px = S.sol_usd;
   const ags = [...new Set([...A.closes, ...A.holdings].map(x => x.strategy))];
   if (TA !== 'all' && !ags.includes(TA)) TA = 'all';
-  const nm = k => ({A: 'Copy wallet', B: 'Multi-whale', C: 'Momentum', LS: 'Launch sniper', V1: 'V1 sniper', M4: 'M4 Momentum', S5: 'S5 Quant'}[k] || k);
+  const nm = k => ((A.subagents || []).find(x => x.key === k) || {}).title || k;
   $('#tAg').innerHTML = ags.length > 1 || TA !== 'all' ? [['all', 'All agents'], ...ags.map(k => [k, nm(k)])].map(([k, l]) => `<button class="chip ${k === TA ? 'on' : ''}" data-ag="${k}">${l}</button>`).join('') : '';
   const byA = x => TA === 'all' || x.strategy === TA;
   let cl = A.closes.filter(byA), ho = A.holdings.filter(byA);
@@ -461,20 +468,46 @@ function renderAct() {
     return `<div class="item ${full ? 'tap' : ''}" ${full ? `data-tok="${esc(a.mint)}"` : ''}>${a.img ? av(a.title.split(' ').pop(), a.img) : `<div class="av" style="background:${bg};font-size:16px">${ic}</div>`}
      <div class="mid"><b>${esc(a.title)}</b><span class="wrap">${esc(a.sub)} · ${tDubai(a.ts)}</span></div><div class="rt">${right}</div></div>`; }).join('') : '<div class="empty">Nothing yet.</div>';
 }
-const EMO = {F: '🌡️', SAFE: '🛡️', A: '👤', B: '🐋', C: '📈', LS: '🎯', V1: '⚡', RISK: '⚖️', M4: '🚀', COPY: '👥', S5: '🧪', DESK: '📊'};
+const EMO = {RISK: '⚖️', V1_SNIPE: '⚡', V1_SCANNER: '🔎', COPY: '👥', C_GRAD: '📈', LS: '🎯', M4_SCAN: '🚀', REVIVAL: '🧪'};
 function agState(g, A) { const online = (A.alive != null ? A.alive : S.bot_alive && S.fresh) && g.used, halted = g.key === 'RISK' && A.halt;
+  if (online && g.toggle && !g.effective) return ['off', g.on ? 'BOT OFF' : 'SWITCHED OFF'];
   return [halted ? 'halt' : online ? 'on' : 'off', halted ? 'HALTED' : online ? 'ONLINE' : g.used ? 'OFFLINE' : 'NOT USED']; }
+// ---------- on/off switches (sent as encrypted, signed commands through the private relay; only the phone app can send) ----------
+const PEND = {};
+function swOn(bot, agent) { const A = S.accounts[bot]; if (!A) return false; const k = bot + ':' + agent; if (PEND[k]) return PEND[k].want;
+  return agent === '_master' ? A.master !== false : !!((A.subagents || []).find(x => x.key === agent) || {}).on; }
+function swBtn(bot, agent) { const k = bot + ':' + agent, can = typeof sendCmd === 'function';
+  return `<button class="sw ${swOn(bot, agent) ? 'on' : ''} ${PEND[k] ? 'pend' : ''} ${can ? '' : 'ro'}" data-sw="${esc(agent)}" data-bot="${esc(bot)}" aria-label="On/off switch" role="switch" aria-checked="${swOn(bot, agent)}"></button>`; }
+function swSettle() { if (!S) return; for (const [k, p] of Object.entries(PEND)) { const [bot, agent] = k.split(':'), A = S.accounts[bot]; if (!A) continue;
+  const cur = agent === '_master' ? A.master !== false : !!((A.subagents || []).find(x => x.key === agent) || {}).on;
+  if (cur === p.want && (A.switch_rev || 0) > p.rev) { delete PEND[k]; pill(`✓ ${agent === '_master' ? bot + ' bot' : nmOf(bot, agent)} ${cur ? 'ON' : 'OFF'}`); }
+  else if (Date.now() - p.t > 30000) { delete PEND[k]; pill('Not confirmed by the bot yet – try again'); } } }
+const nmOf = (bot, k) => (((S.accounts[bot] || {}).subagents || []).find(x => x.key === k) || {}).title || k;
+async function flip(btn) { const bot = btn.dataset.bot, agent = btn.dataset.sw, k = bot + ':' + agent;
+  if (typeof sendCmd !== 'function') { pill('Use the phone app to switch agents'); return; }
+  if (PEND[k]) return; const want = !swOn(bot, agent);
+  PEND[k] = {want, t: Date.now(), rev: (S.accounts[bot] || {}).switch_rev || 0}; render(false);
+  try { await sendCmd(bot, agent, want); pill('Sent · waiting for the bot…'); } catch (e) { delete PEND[k]; pill('Could not send: ' + (e.message || e)); render(false); } }
+setInterval(() => { if (Object.keys(PEND).length) { swSettle(); render(false); } }, 3000);
 function agMx(g) { return g.metrics ? g.metrics.map(([k, v]) => `<div><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join('') :
   `<div><b>${g.signals}</b><span>Signals</span></div><div><b>${g.trades}${g.open ? '+' + g.open : ''}</b><span>Trades</span></div>
    <div><b>${g.win_rate == null ? 'n/a' : Math.round(g.win_rate) + '%'}</b><span>Win rate</span></div>
    <div><b class="${g.trades ? cls(g.pnl_sol) : ''}">${g.trades ? sgn(g.pnl_sol, 3) : '0'}</b><span>PnL SOL${g.trades && S.sol_usd ? ' · ' + usdS(g.pnl_sol, S.sol_usd) : ''}</span></div>`; }
 function renderAgents() {
-  const A = S.accounts[ACCT];
-  $('#agents').innerHTML = A.agents.map(g => { const [stc, stt] = agState(g, A);
+  const A = S.accounts[ACCT], SA = A.subagents || [], tp = SA.reduce((s, x) => s + x.pnl_sol, 0);
+  const ch = S.switch_channel || {}, can = typeof sendCmd === 'function';
+  const master = `<div class="card"><div class="mst"><div class="av" style="background:var(--pd)">${ACCT === 'S5' ? '🧪' : '⚡'}</div><div class="mid"><b>${esc(A.title || ACCT)} bot</b>
+     <span class="wrap">${A.master === false ? 'Bot switched OFF: no new entries, open positions still exit normally' : 'Bot ON · sub-agents below can be switched one by one'}</span></div>${swBtn(ACCT, '_master')}</div>
+     <div class="pl"><span class="h">SUB-AGENT (THIS RUN)</span><span class="h">TRADES</span><span class="h">WIN</span><span class="h">P/L SOL</span>
+     ${SA.map(x => `<b>${EMO[x.key] || '•'} ${esc(x.title)}${x.on ? '' : ' <span class="mut">(off)</span>'}</b><span>${x.trades}${x.open ? '+' + x.open : ''}</span><span>${x.win_rate == null ? '–' : Math.round(x.win_rate) + '%'}</span><b class="${x.trades ? cls(x.pnl_sol) : 'mut'}">${x.trades ? sgn(x.pnl_sol, 4) : '0'}</b>`).join('')}
+     <b>Total</b><span>${SA.reduce((s, x) => s + x.trades, 0)}</span><span></span><b class="${cls(tp)}">${sgn(tp, 4)}</b></div>
+     <p class="note" style="margin-top:10px;text-align:left">${can ? 'Switches are sent encrypted and signed through your private relay and take effect within seconds.' : 'Switch agents from the phone app (your private link); this view only shows their state.'}${ch.subscribed === false ? ' <b class="dn">Switch channel not connected.</b>' : ''} Off = no new trades; open positions keep their exits.</p></div>`;
+  const L = S.legacy, legacy = L && L.rows ? `<div class="card lg2"><h4 style="margin:0 0 6px">Before the merge <span class="mut" style="font-weight:500;font-size:12px">old bots, all runs (closed trades)</span></h4>${L.rows.map(r => `<p>${esc(r.bot)} · ${esc(r.agent)}: ${r.wins}W/${r.losses}L · <span class="${cls(r.net)}">${sgn(r.net, 4)} SOL</span> · ${esc(r.decision)}</p>`).join('')}<p class="mut">${esc(L.note || '')}</p></div>` : '';
+  $('#agents').innerHTML = master + A.agents.map(g => { const [stc, stt] = agState(g, A);
     return `<div class="card ag tap" data-agent="${esc(g.key)}" style="${g.used ? '' : 'opacity:.5'}"><div class="h"><div class="ic">${EMO[g.key] || '•'}</div><div><div class="nm">${esc(g.title)}</div><div class="ds">${esc(g.desc)}</div></div>
-     <span class="st ${stc}"><i></i>${stt}</span>${chev}</div><div class="task">${esc(g.task)}</div>
+     <span class="st ${stc}"><i></i>${stt}</span>${g.toggle ? swBtn(ACCT, g.key) : chev}</div><div class="task">${esc(g.task)}</div>
      <div class="last">${g.last ? 'Last: ' + esc(g.last.text) + ' · ' + ago(g.last.ts) : 'No action yet this run'}</div>
-     ${g.phases && g.used ? `<div class="last">${['bonding', 'graduated'].map(k => `${k === 'bonding' ? 'Curve' : 'Graduated'}: ${g.phases[k].trades} trades${g.phases[k].trades ? ', ' + sgn(g.phases[k].pnl_sol, 4) + ' SOL' : ''}`).join(' · ')}</div>` : ''}<div class="mx" style="${g.metrics ? 'grid-template-columns:repeat(3,1fr)' : ''}">${agMx(g)}</div></div>`; }).join('');
+     ${g.phases && g.used ? `<div class="last">${['bonding', 'graduated'].map(k => `${k === 'bonding' ? 'Curve' : 'Graduated'}: ${g.phases[k].trades} trades${g.phases[k].trades ? ', ' + sgn(g.phases[k].pnl_sol, 4) + ' SOL' : ''}`).join(' · ')}</div>` : ''}<div class="mx" style="${g.metrics ? 'grid-template-columns:repeat(3,1fr)' : ''}">${agMx(g)}</div></div>`; }).join('') + legacy;
 }
 function renderWallets() { const W = S.wallets || []; $('#wN').textContent = `${W.filter(w => w.verified).length} verified · ${W.filter(w => !w.verified).length} unverified`;
   $('#wallets').innerHTML = W.map(w => `<div class="item wl"><div class="av">${esc(w.label[0].toUpperCase())}</div><div class="mid"><b>${esc(w.label)}<span class="vf ${w.verified ? 'y' : 'n'}">${w.verified ? '✓ VERIFIED' : 'UNVERIFIED'}</span></b>
@@ -556,7 +589,7 @@ function tokSheet() {
         ['In → out', `${f4(pos.size_sol)} → ${f4(pos.sol_out)} SOL`], ['Held', `${hold(pos.hold_s)} · ${dtDubai(pos.opened)} → ${tDubai(pos.closed)}`],
         ['Entry price', em ? `${fmtP(em)} SOL · ${fmtP(em * (pos.sol_usd || px), '$')}` : 'n/a'], ['Exit price', pos.exit_mark ? `${fmtP(pos.exit_mark)} SOL` : 'n/a']);
       if (pos.peak_mark && em) rows.push(['Peak while held', `${pct((pos.peak_mark / em - 1) * 100)}`]);
-      if (pos.strategy === 'M4') { rows.push(['Initials', pos.initials_pulled ? '<span class="up">💰 pulled at ' + (pl.initials_at_x || 2) + 'x</span>' : 'not reached']);
+      if (pos.strategy === 'M4_SCAN') { rows.push(['Initials', pos.initials_pulled ? '<span class="up">💰 pulled at ' + (pl.initials_at_x || 2) + 'x</span>' : 'not reached']);
         (pos.sells || []).forEach(x => rows.push([x.kind === 'initials' ? 'Sell 1 · initials' : 'Final sell', `${Math.round(x.frac * 100)}% → ${f4(x.sol_out)} SOL · ${tDubai(x.ts)}`])); }
       else if (pl.stop_loss_pct != null) rows.push(['SL / TP', `−${pl.stop_loss_pct}% / +${pl.take_profit_pct}%${pl.max_hold_minutes ? ' · max ' + pl.max_hold_minutes + ' min' : ''}`]);
       if (T.pn && em) rows.push(['Price now vs entry', `<span class="${cls(T.pn / em - 1)}">${pct((T.pn / em - 1) * 100)}</span>`]);
@@ -567,14 +600,14 @@ function tokSheet() {
   // history
   const parts = []; for (const [an, a] of Object.entries(S.accounts)) (a.partials || []).forEach(p => p.mint === m && parts.push({...p, acct: an}));
   const hist = [...ent.map(e => ({ts: e.ts, t: 'buy', e})), ...parts.map(e => ({ts: e.ts, t: 'part', e})), ...all.filter(x => x.k === 'closed').map(x => ({ts: x.closed, t: 'sell', e: x}))].sort((a, b) => b.ts - a.ts);
-  const H = hist.length ? hist.map(({t, e}) => t === 'part' ? `<div class="hi"><i class="sell">💰</i><div class="mid"><b>${e.strategy === 'S5' ? 'Took profit' : 'Initials pulled'} · ${esc(e.strategy_name)}</b><span>${dtDubai(e.ts)} · sold ${Math.round(e.frac * 100)}% · ${e.strategy === 'S5' ? 'rest on a trailing stop' : 'moonbag rides'}</span></div><div class="rt"><b class="up">${f4(e.sol_out)}</b><span class="mut">${usd(e.sol_out, e.sol_usd || px)}</span></div></div>` : `<div class="hi ${e.id === (pos && pos.id) ? 'cur' : ''}" ${t === 'sell' ? `data-tok="${esc(m)}" data-ref="${esc(e.id)}" data-acct="${esc(e.acct)}"` : ''}><i class="${t}">${t === 'buy' ? '↗' : '↘'}</i><div class="mid"><b>${t === 'buy' ? 'Bought' : 'Sold'} · ${esc(e.strategy_name)}</b><span>${dtDubai(t === 'buy' ? e.ts : e.closed)} · ${esc(acName(e.acct))}${t === 'sell' ? ' · ' + esc(String(e.reason).replace(/_/g, ' ')) : ''}</span></div>
+  const H = hist.length ? hist.map(({t, e}) => t === 'part' ? `<div class="hi"><i class="sell">💰</i><div class="mid"><b>${e.kind === 'initials' ? 'Initials pulled' : 'Took profit'} · ${esc(e.strategy_name)}</b><span>${dtDubai(e.ts)} · sold ${Math.round(e.frac * 100)}% · ${e.kind === 'initials' ? 'moonbag rides' : 'rest on a trailing stop'}</span></div><div class="rt"><b class="up">${f4(e.sol_out)}</b><span class="mut">${usd(e.sol_out, e.sol_usd || px)}</span></div></div>` : `<div class="hi ${e.id === (pos && pos.id) ? 'cur' : ''}" ${t === 'sell' ? `data-tok="${esc(m)}" data-ref="${esc(e.id)}" data-acct="${esc(e.acct)}"` : ''}><i class="${t}">${t === 'buy' ? '↗' : '↘'}</i><div class="mid"><b>${t === 'buy' ? 'Bought' : 'Sold'} · ${esc(e.strategy_name)}</b><span>${dtDubai(t === 'buy' ? e.ts : e.closed)} · ${esc(acName(e.acct))}${t === 'sell' ? ' · ' + esc(String(e.reason).replace(/_/g, ' ')) : ''}</span></div>
      <div class="rt">${t === 'buy' ? `<b>${f4(e.size_sol)} SOL</b><span class="mut">${usd(e.size_sol, e.sol_usd || px)}</span>` : `<b class="${cls(e.pnl_sol)}">${sgn(e.pnl_sol)}</b><span class="${cls(e.pnl_sol)}">${pct(e.pnl_pct)}</span>`}</div></div>`).join('') : '<div class="empty">No trades in this token yet.</div>';
   $('#sBody').innerHTML = `${mk}${P}
     <div class="links"><a class="sbtn" href="https://dexscreener.com/solana/${esc(pair || m)}" target="_blank" rel="noopener">DexScreener ↗</a><a class="sbtn" href="https://pump.fun/coin/${esc(m)}" target="_blank" rel="noopener">pump.fun ↗</a><a class="sbtn" href="https://solscan.io/token/${esc(m)}" target="_blank" rel="noopener">Solscan ↗</a></div>
     <h4 class="sh4">Trade history <span class="mut">${hist.length}</span></h4>${H}
     <p class="note">Paper trades only. Prices: DexScreener (now) and the bot's Jupiter quotes (entry/exit).</p>`;
 }
-const acName = a => ({REVISED: 'Latest rules', ORIGINAL: 'Original', V1_SNIPER: 'V1 sniper', M4: 'M4 Momentum', S5: 'S5 Quant'}[a] || a);
+const acName = a => ({V1: 'V1 Sniper', S5: 'S5 Quant'}[a] || a);
 const m4Plan = pl => [['Stop loss', '−' + pl.stop_loss_pct + '% on the whole position'], ['Pull initials', `at ${pl.initials_at_x}x: sell enough to get the SOL + fees back`],
   ['Moonbag trail', `${pl.moonbag_trail_pct}% below its high, never below entry`], ['Moonbag cap', `sell all at ${pl.moonbag_cap_x}x`],
   ['Max hold', `${pl.max_hold_minutes} min before initials · ${pl.moonbag_max_hold_minutes} min moonbag`], ['Exit if liquidity drops', pl.liq_drop_exit_pct + '%']];
@@ -583,22 +616,23 @@ const RULE = {F: 'Market check', SAFE: 'Safety gate', RISK: 'Sizing & limits', A
 function agentSheet() {
   setChart(null); const A = S.accounts[SH.acct] || S.accounts[ACCT], px = S.sol_usd, g = A.agents.find(x => x.key === SH.agent); if (!g) return closeSheet();
   const [stc, stt] = agState(g, A);
-  $('#sHead').innerHTML = `<div class="th"><div class="av lg ic2">${EMO[g.key] || '•'}</div><div class="mid"><b>${esc(g.title)}</b><span class="wrap">${esc(g.desc)}</span></div><span class="st ${stc}"><i></i>${stt}</span></div>`;
-  const pl = (A.plans || {})[g.key], tr = ['A', 'B', 'C', 'LS', 'V1', 'M4', 'S5'].includes(g.key);
+  $('#sHead').innerHTML = `<div class="th"><div class="av lg ic2">${EMO[g.key] || '•'}</div><div class="mid"><b>${esc(g.title)}</b><span class="wrap">${esc(g.desc)}</span></div><span class="st ${stc}"><i></i>${stt}</span>${g.toggle ? swBtn(SH.acct, g.key) : ''}</div>`;
+  const pl = (A.plans || {})[g.key], tr = !!g.toggle;
   const plan = pl && pl.initials_at_x ? `<div class="card pos"><h4>Exit plan <span class="mut">${esc(acName(SH.acct))}</span></h4>${kv(m4Plan(pl))}</div>` : pl && pl.take_profit_pct != null ? `<div class="card pos"><h4>Exit plan <span class="mut">${esc(acName(SH.acct))}</span></h4>${kv([['Take profit', '+' + pl.take_profit_pct + '%'], ['Stop loss', '−' + pl.stop_loss_pct + '%'],
     ...(pl.trailing_stop_pct != null ? [['Trailing stop', `${pl.trailing_stop_pct}% after +${pl.trailing_activate_pct}%`]] : []), ...(pl.breakeven_at_pct ? [['Break-even stop at', '+' + pl.breakeven_at_pct + '%']] : []),
     ...(pl.max_hold_minutes ? [['Max hold', pl.max_hold_minutes + ' min']] : []), ...(pl.liq_drop_exit_pct ? [['Exit if liquidity drops', pl.liq_drop_exit_pct + '%']] : [])])}</div>` : '';
-  const RK = SH.acct === 'M4' ? {M4: 'M4 Momentum', COPY: 'M4 copy-wallet boost', SAFE: 'M4 anti-rug checks', RISK: 'M4 Momentum'}[g.key] : SH.acct === 'S5' ? {S5: 'S5 Quant · Revival', DESK: 'S5 backtest (estimate)', RISK: 'S5 Quant · Revival'}[g.key] : RULE[g.key];
-  const rs = (S.rules || []).filter(r => r.title === RK || ((g.key === 'A' || (SH.acct === 'M4' && g.key === 'COPY')) && r.title === 'Copied wallets'));
+  const RK = g.key === 'RISK' ? 'Shared bankroll & limits' : g.title;
+  const rs = (S.rules || []).filter(r => r.title === RK || (g.key === 'COPY' && r.title === 'Copied wallets') || (g.toggle && r.title === 'On/off switches'));
   const rules = rs.length ? rs.map(r => `<div class="card rule"><h4>${esc(r.title)}</h4>${r.lines.map(l => `<p>${esc(l)}</p>`).join('')}</div>`).join('') :
     g.key === 'V1' ? `<div class="card rule"><h4>V1 sniper (your first rules)</h4><p>Buys new pump.fun tokens from the scanner with looser checks and no market gate, up to 15% of balance (max 0.15 SOL), 3 at a time.</p></div>` : '';
   const ho = tr ? A.holdings.filter(h => h.strategy === g.key) : [], cl = tr ? A.closes.filter(x => x.strategy === g.key) : [];
   const pn = cl.reduce((s, x) => s + x.pnl_sol, 0);
+  const lg = g.legacy ? `<div class="card pos"><h4>Before the merge <span class="mut">old bots</span></h4>${kv(g.legacy.map(r => [esc(r.bot + ' · ' + r.agent), `${r.wins}W/${r.losses}L · <span class="${cls(r.net)}">${sgn(r.net, 4)} SOL</span>`]))}</div>` : '';
   const trades = tr ? `<h4 class="sh4">This agent's trades <span class="mut">${cl.length} closed${ho.length ? ' · ' + ho.length + ' open' : ''}${cl.length ? ` · <span class="${cls(pn)}">${sgn(pn)} SOL</span>` : ''}</span></h4>` +
     ([...ho.map(h => holdRow(h, px)), ...cl.map(x => closeRow(x, px))].join('') || '<div class="empty">No trades from this agent yet in this run.</div>') :
     `<div class="card pos"><h4>Gate agent</h4><p class="note" style="margin:0">This agent doesn't trade on its own. It checks every trade the other agents want to make and blocks it if its rules fail.</p></div>`;
   $('#sBody').innerHTML = `<div class="card pos"><div class="task">${esc(g.task)}</div><div class="last">${g.last ? 'Last: ' + esc(g.last.text) + ' · ' + ago(g.last.ts) : 'No action yet this run'}</div><div class="mx" style="${g.metrics ? 'grid-template-columns:repeat(3,1fr)' : ''}">${agMx(g)}</div></div>
-    ${trades}${plan}${rules ? '<h4 class="sh4">Rules</h4>' + rules : ''}`;
+    ${trades}${plan}${lg}${rules ? '<h4 class="sh4">Rules</h4>' + rules : ''}`;
 }
 // swipe down to close the sheet
 (() => { const sh = $('#sheet'); let y0 = null, dy = 0;
@@ -647,14 +681,14 @@ function notify() {
 }
 function toast(e) {
   const px = S.sol_usd, d = document.createElement('div'); d.className = 'toast';
-  if (e.k === 'partial') d.innerHTML = `${av(e.symbol, e.img)}<div class="mid"><b>💰 ${e.strategy === 'S5' ? 'Took profit' : 'Initials pulled'} · ${esc(e.symbol)}</b><span>${esc(e.strategy_name)} · sold ${Math.round(e.frac * 100)}% for ${f4(e.sol_out)} SOL · ${e.strategy === 'S5' ? 'rest on a trailing stop' : 'moonbag rides'}</span></div><div class="rt"><b class="up">${f4(e.sol_out)}</b><span class="up">SOL · ${usd(e.sol_out, e.sol_usd || px)}</span></div>`;
+  if (e.k === 'partial') d.innerHTML = `${av(e.symbol, e.img)}<div class="mid"><b>💰 ${e.kind === 'initials' ? 'Initials pulled' : 'Took profit'} · ${esc(e.symbol)}</b><span>${esc(e.strategy_name)} · sold ${Math.round(e.frac * 100)}% for ${f4(e.sol_out)} SOL · ${e.kind === 'initials' ? 'moonbag rides' : 'rest on a trailing stop'}</span></div><div class="rt"><b class="up">${f4(e.sol_out)}</b><span class="up">SOL · ${usd(e.sol_out, e.sol_usd || px)}</span></div>`;
   else if (e.k === 'buy') d.innerHTML = `${av(e.symbol, e.img)}<div class="mid"><b>Bought ${esc(e.symbol)}</b><span>${esc(e.strategy_name)} · ${f4(e.size_sol)} SOL · ${usd(e.size_sol, px)}</span></div><div class="rt"><b style="color:var(--p)">BUY</b><span class="mut">${tDubai(e.ts)}</span></div>`;
   else d.innerHTML = `${av(e.symbol, e.img)}<div class="mid"><b>Sold ${esc(e.symbol)} · held ${hold(e.hold_s)}</b><span>${esc(e.strategy_name)} · ${f4(e.size_sol)} SOL in · ${esc(e.reason.replace(/_/g, ' '))}</span></div>
      <div class="rt"><div class="big ${cls(e.pnl_sol)}">${sgn(e.pnl_sol)}</div><span class="${cls(e.pnl_sol)}">SOL · ${usdS(e.pnl_sol, e.sol_usd || px)} · ${e.pnl_pct >= 0 ? '+' : ''}${e.pnl_pct.toFixed(1)}%</span></div>`;
   $('#toasts').prepend(d); tick();
   if ((e.k === 'sell' && e.pnl_sol > 0) || e.k === 'partial') confetti();
   const out = () => { d.classList.add('out'); setTimeout(() => d.remove(), 400); };
-  d.onclick = () => { out(); openToken(e.mint, e.k === 'sell' ? e.id : null, e.k === 'partial' ? (e.strategy === 'S5' ? 'S5' : 'M4') : null); };
+  d.onclick = () => { out(); openToken(e.mint, e.k === 'sell' ? e.id : null, e.k === 'partial' ? ACCT : null); };
   setTimeout(out, 6500);
 }
 function confetti() {
@@ -666,7 +700,7 @@ function confetti() {
       if (p.b) { x.beginPath(); x.arc(0, 0, p.s * .9, 0, 7); x.strokeStyle = 'rgba(200,255,220,.7)'; x.stroke(); } else x.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); x.restore(); });
     if (t < 160) requestAnimationFrame(f); else x.clearRect(0, 0, innerWidth, innerHeight); })();
 }
-function apply(d) { if (!d || !d.accounts) return; S = d; lastMsg = Date.now(); render(first); first = false; }
+function apply(d) { if (!d || !d.accounts) return; d.accounts = Object.fromEntries(Object.entries(d.accounts).filter(([k]) => ACCTS.some(x => x[0] === k))); S = d; if (!S.accounts[ACCT] && Object.keys(S.accounts).length) ACCT = Object.keys(S.accounts)[0]; swSettle(); lastMsg = Date.now(); render(first); first = false; }
 setInterval(() => { if (S) { S.now = Date.now() / 1000; const fresh = S.now - S.log_mtime <= 120; if (fresh !== S.fresh) { S.fresh = fresh; render(false); } } }, 3000);
 addEventListener('resize', () => drawChart(false));
 // ===== END UI =====
@@ -682,7 +716,7 @@ if (KEY && !keyFromHash(location.hash)) history.replaceState(null, '', location.
 let lastSeal = 0;
 const enc = new TextEncoder(), hex = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
 const sha = s => crypto.subtle.digest('SHA-256', enc.encode(s));
-let AESK = null, TOPIC = null, NTOPIC = null;
+let AESK = null, TOPIC = null, NTOPIC = null, CKEY = null, CTOPIC = null;
 async function open_(buf) {
   const u = new Uint8Array(buf); if (u[0] !== 83 || u[1] !== 49) throw new Error('bad payload');
   const pt = await crypto.subtle.decrypt({name: 'AES-GCM', iv: u.slice(2, 14), additionalData: enc.encode('sentinel')}, AESK, u.slice(14));
@@ -691,7 +725,7 @@ async function open_(buf) {
 }
 async function onPayload(buf) { try { const d = await open_(buf); lastSeal = Date.now(); apply(d); setConn('live'); } catch (e) { setConn('key?'); } }
 function setConn(s) { const el = $('#conn'); if (el) el.textContent = s === 'live' ? '' : s === 'key?' ? 'wrong key?' : s; }
-// --- minimal MQTT 3.1.1 client over WebSocket (subscribe only, read-only) ---
+// --- minimal MQTT 3.1.1 client over WebSocket (subscribes to the state; publishes only on/off switch commands) ---
 const MQ = {ws: null, buf: new Uint8Array(0), ping: null, retry: 1000};
 const mstr = s => { const b = enc.encode(s); return [b.length >> 8, b.length & 255, ...b]; };
 const mlen = n => { const o = []; do { let d = n % 128; n = Math.floor(n / 128); if (n) d |= 128; o.push(d); } while (n); return o; };
@@ -728,6 +762,8 @@ async function startData() {
   if (!window.crypto || !crypto.subtle || !window.DecompressionStream) { $('#gate').classList.add('on'); $('#gerr').textContent = 'Please update iOS (16.4 or later) to use this app.'; return; }
   TOPIC = 'sntl/' + hex(await sha('sentinel-topic:' + KEY)).slice(0, 32); NTOPIC = 'sntl_' + hex(await sha('sentinel-ntfy:' + KEY)).slice(0, 32);
   AESK = await crypto.subtle.importKey('raw', await sha('sentinel-key:' + KEY), 'AES-GCM', false, ['decrypt']);
+  CTOPIC = 'sntl/' + hex(await sha('sentinel-cmd:' + KEY)).slice(0, 32);
+  CKEY = await crypto.subtle.importKey('raw', await sha('sentinel-cmd-key:' + KEY), 'AES-GCM', false, ['encrypt']);
   mqConnect(); setTimeout(() => { if (!lastSeal) ntfyPoll(); }, 8000);
 }
 $('#gb').onclick = () => { const k = keyFromHash($('#gk').value) || ($('#gk').value.trim().match(/^[A-Za-z0-9_-]{20,}$/) || [])[0];
@@ -737,6 +773,15 @@ setInterval(() => {
   if (KEY && AESK && Date.now() - lastSeal > 45000) { ntfyPoll(); if (!MQ.ws || MQ.ws.readyState > 1) mqConnect(); }
 }, 15000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && AESK) { if (!MQ.ws || MQ.ws.readyState > 1) { MQ.retry = 1000; mqConnect(); } } });
+// on/off command: b"C1" + iv + AES-GCM(json) with a separate key and AAD, published once (QoS 0, not retained) on the command topic.
+// Only holders of the private key can make a valid command; the bot checks time, order and nonce before applying it.
+async function sendCmd(bot, agent, on) {
+  if (!CKEY || !MQ.ws || MQ.ws.readyState !== 1) throw new Error('not connected to the relay');
+  const iv = crypto.getRandomValues(new Uint8Array(12)), n = hex(crypto.getRandomValues(new Uint8Array(12)));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({name: 'AES-GCM', iv, additionalData: enc.encode('sentinel-cmd')}, CKEY,
+    enc.encode(JSON.stringify({v: 1, bot, agent, on, ts: Date.now() / 1000, n}))));
+  MQ.ws.send(mpkt(0x30, [...mstr(CTOPIC), 67, 49, ...iv, ...ct]));
+}
 function refreshData() { if (!AESK) return; const o = MQ.ws; MQ.ws = null; clearInterval(MQ.ping); MQ.retry = 1000; try { if (o) o.close(); } catch (e) {} mqConnect(); ntfyPoll(); }
 // ===== END DATA LAYER =====
 startData();

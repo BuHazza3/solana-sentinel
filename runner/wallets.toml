@@ -1,0 +1,16 @@
+# Shared copy-trade WATCH LIST (addresses only; never connected, never signed with). Used by the COPY sub-agent of V1 and S5.
+# Each entry: verified on-chain stats used for the decision (estimates from the sampled data). Edited by the wallet scout.
+follow = [
+  { address = "4xY9T1Q7foJzJsJ6YZDSsfp9zkzeZsXnxd45SixduMmr", label = "zeropnl", evidence = "verified on-chain (pump.fun sample): +115.7 SOL, 27 closed, 96% win, 6.8h, 5s median hold" },
+  { address = "78N177fzNJpp8pG49xDv1efYcTMSzo9tPTKEA9mAVkh2", label = "Sheep", evidence = "verified on-chain (pump.fun sample): +7.8 SOL, 6 closed, 100% win, 2.0h, 7s median hold" },
+  { address = "4fZFcK8ms3bFMpo1ACzEUz8bH741fQW4zhAMGd5yZMHu", label = "Rilsio", evidence = "verified on-chain (pump.fun sample): +16.2 SOL, 23 closed, 57% win, 24.2h, 99s median hold" },
+  { address = "xyzfhxfy8NhfeNG3Um3WaUvFXzNuHkrhrZMD8dsStB6", label = "Gasp", evidence = "verified on-chain (pump.fun sample): +50.0 SOL, 40 closed, 28% win, 4.8h, 22s median hold" },
+  { address = "2X4H5Y9C4Fy6Pf3wpq8Q4gMvLcWvfrrwDv2bdR8AAwQv", label = "Orange", evidence = "verified on-chain (pump.fun sample): +50.9 SOL, 5 closed, 40% win, 4.8h, 170s median hold" },
+  { address = "5YRgrP3mjGzrzirYYN5HAQH19cTYREYwGxW6XRJQUzij", label = "slingoor", evidence = "unverified: leaderboards Subglow 30d +24,263 SOL 63%; kolscan 1d +573 SOL" },
+  { address = "4vw54BmAogeRV3vPKWyFet5yf8DTLcREzdSzx4rw9Ud9", label = "decu", evidence = "unverified: leaderboards Subglow 30d +3,219 SOL; Alphalumina +$232.9K 66.5%" },
+  { address = "Bi4rd5FH5bYEN8scZ7wevxNZyNmKHdaBcvewdPFxYdLt", label = "theo", evidence = "unverified: leaderboards Subglow 30d +1,504 SOL; Alphalumina +$170.0K" },
+  { address = "ardinRsN1mNYVeoJWTBsWeYeXvuR9UUDGMsCDKpb6AT", label = "trunoest", evidence = "unverified: leaderboards Subglow 30d +1,582 SOL; Alphalumina +$217.3K" },
+  { address = "BQVz7fQ1WsQmSTMY3umdPEPPTm1sdcBcX9sP7o6kPRmB", label = "Limfork", evidence = "unverified: leaderboards Subglow 30d +662 SOL; Alphalumina +$130.6K" },
+  { address = "CyaE1VxvBrahnPWkqm5VsdCvyS2QmNht2UFrKJHga54o", label = "Cented", evidence = "unverified: leaderboards Subglow 30d +2,343 SOL 44%" },
+  { address = "B32QbbdDAyhvUQzjcaM5j6ZVKwjCxAwGH5Xgvb9SJqnC", label = "Kadenox", evidence = "unverified: leaderboards Subglow 30d +831 SOL 51%" },
+]

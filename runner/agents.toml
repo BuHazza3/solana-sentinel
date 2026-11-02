@@ -1,0 +1,88 @@
+# SUB-AGENTS (PAPER ONLY). Each keeps the entry logic and the exits it had in the bot it came from; only agents that
+# produced at least one profitable paper trade were kept (see /workspace/consolidate/agents.json for the P/L per agent).
+# Sizing and account limits come from the HOST bot (v1_bot.toml / s5_bot.toml), which shares one 1 SOL bankroll.
+[general]
+paper = true
+latency_slippage_bps = 100        # extra adverse move on each fill (quote -> landing)
+max_slippage_bps = 500
+ata_rent_sol = 0.00203928         # refunded when the token account is closed after the final sell
+[fees.normal]                     # from pump_sentinel.toml (C)
+sol = 0.000105
+[fees.snipe]                      # from pump_sentinel.toml / m4_momentum.toml / s5_quant.toml
+sol = 0.000605
+
+# ---------------------------------------------------------------- from V1_SNIPER (pump_sentinel.py, rules in config.toml)
+[agent.V1_SNIPE]
+origin = "V1_SNIPER · snipe path"
+title = "V1 snipe"
+kind = "v1"
+signal = "snipe"
+fees = "snipe"
+exit = { engine = "classic", stop_loss_pct = 20, take_profit_pct = 40, trailing_activate_pct = 20, trailing_stop_pct = 12, max_hold_minutes = 20 }
+[agent.V1_SCANNER]
+origin = "V1_SNIPER · scanner path"
+title = "V1 scanner"
+kind = "v1"
+signal = "scanner"
+fees = "snipe"
+exit = { engine = "classic", stop_loss_pct = 20, take_profit_pct = 40, trailing_activate_pct = 20, trailing_stop_pct = 12, max_hold_minutes = 20 }
+[agent.COPY]
+origin = "V1_SNIPER · copy path (watch list in wallets.toml)"
+title = "Copy-trade"
+kind = "v1"
+signal = "copy"
+fees = "snipe"
+exit_when_leader_sells = true
+exit = { engine = "classic", stop_loss_pct = 20, take_profit_pct = 40, trailing_activate_pct = 20, trailing_stop_pct = 12, max_hold_minutes = 20 }
+
+# ---------------------------------------------------------------- from ORIGINAL + REVISED (pump_sentinel.py)
+[agent.C_GRAD]
+origin = "ORIGINAL + REVISED · momentum C, graduated bucket"
+title = "Momentum C (graduated)"
+kind = "c"
+fees = "normal"
+use_regime_gate = true
+max_rug_score = 20
+min_rr = 2.0
+min_liquidity_usd = 30000
+min_age_minutes = 30
+min_vol_liq_h1 = 0.5
+min_buy_sell_ratio_h1 = 1.15
+max_h1_pct = 150
+min_score = 0.6
+crit = { min_lp_locked_pct = 90, max_top10_pct = 30, max_single_pct = 10, max_round_trip_loss_pct = 10, veto_clmm_only = true, max_dev_hold_pct = 10, max_bundle_pct = 20, serial_launcher_coins = 20 }
+regime = { sol_h1_min_pct = -1.5, sol_h6_min_pct = -3.0, sol_h24_min_pct = -6.0, emergency_exit_h1_pct = -3.0 }
+exit = { engine = "classic", stop_loss_pct = 8, take_profit_pct = 28, breakeven_at_pct = 12, trailing_activate_pct = 15, trailing_stop_pct = 7, max_hold_minutes = 45, liq_drop_exit_pct = 25 }
+[agent.LS]
+origin = "REVISED · launch-sniper tier"
+title = "Launch sniper"
+kind = "ls"
+fees = "snipe"
+max_rug_score = 40
+max_age_minutes = 30
+min_liquidity_usd = 4000
+min_progress_pct = 10
+max_progress_pct = 85
+min_buys_5m = 25
+min_buy_sell_ratio = 1.3
+crit = { min_lp_locked_pct = 90, max_top10_pct = 50, max_single_pct = 20, max_round_trip_loss_pct = 12, veto_clmm_only = true, max_dev_hold_pct = 20, max_bundle_pct = 40, serial_launcher_coins = 20 }
+exit = { engine = "classic", stop_loss_pct = 10, take_profit_pct = 25, trailing_activate_pct = 12, trailing_stop_pct = 8, max_hold_minutes = 5, liq_drop_exit_pct = 40 }
+
+# ---------------------------------------------------------------- from M4 (m4_momentum.py, scan tier)
+[agent.M4_SCAN]
+origin = "M4 · scan tier (new tokens with real volume)"
+title = "M4 momentum scan"
+kind = "m4"
+fees = "snipe"
+entry = { max_age_minutes = 30, min_mcap_usd = 6000, max_mcap_usd = 2000000, min_vol_5m_usd = 4000, min_trades_5m = 60, min_buy_sell_ratio_5m = 1.25, min_price_change_5m_pct = 3, max_price_change_5m_pct = 120, max_price_change_1h_pct = 600, min_unique_traders = 25, min_mcap_vs_ath_pct = 60, bonding_min_progress_pct = 15, bonding_max_progress_pct = 97, graduated_min_liquidity_usd = 15000, max_fill_vs_mark_pct = 25, max_round_trip_loss_pct = 8, max_pump_rug_score = 45, reevaluate_seconds = 75 }
+antirug = { require_mint_authority_revoked = true, require_freeze_authority_revoked = true, max_dev_hold_pct = 8, max_dev_sold_pct_of_buys = 50, max_top10_pct = 35, max_single_holder_pct = 12, max_bundle_pct = 15, max_launch_block_buyers = 8, serial_launcher_coins = 10, max_rugcheck_score = 50, reject_rugcheck_danger = true, min_lp_locked_pct = 90, max_insiders = 20 }
+exit = { engine = "m4", stop_loss_pct = 20, initials_at_x = 2.0, breakeven_after_initials = true, moonbag_trail_pct = 30, moonbag_cap_x = 5.0, max_hold_minutes = 40, moonbag_max_hold_minutes = 120, price_lost_seconds = 120, liq_drop_exit_pct = 50, dead_after_minutes = 8, dead_max_trades_5m = 5 }
+
+# ---------------------------------------------------------------- S5's own strategy (s5_quant.py)
+[agent.REVIVAL]
+origin = "S5 Quant · Outrider Revival lane"
+title = "S5 Revival"
+kind = "revival"
+fees = "snipe"
+entry = { min_age_minutes = 30, quiet_window_minutes = 15, quiet_max_volume_sol = 1.0, wake_min_sol = 4.0, max_price_vs_peak = 0.5, scan_list_pages = 2, scan_interval_seconds = 15, recheck_seconds = 60 }
+exit = { engine = "card", stop_loss_pct = 15, take_profits = [[1.5, 0.5], [2.5, 1.0]], trail_pct = 20, max_hold_minutes = 90, price_lost_seconds = 180 }

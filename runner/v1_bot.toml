@@ -1,0 +1,20 @@
+# V1 bot (PAPER ONLY): one 1 SOL paper bankroll shared by its sub-agents. Risk limits = V1_SNIPER's own (config.toml [risk]).
+[general]
+paper = true
+bot = "V1"
+title = "V1 sniper"
+start_balance_sol = 1.0
+[risk]
+sizing = "v1"                    # 15% of cash per trade, max 0.15 SOL, min 0.05 SOL, keep 0.05 SOL reserve
+position_pct = 15
+max_position_sol = 0.15
+min_position_sol = 0.05
+reserve_sol = 0.05
+max_open = 3
+[agents]                         # sub-agent -> on by default (the app's switches override this)
+V1_SNIPE = true
+V1_SCANNER = true
+COPY = true
+C_GRAD = true
+LS = true
+M4_SCAN = true

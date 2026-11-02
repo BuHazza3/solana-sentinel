@@ -1,0 +1,22 @@
+# S5 Quant bot (PAPER ONLY): one 1 SOL paper bankroll shared by its sub-agents. Risk limits = S5's: 1% of equity at risk
+# per trade (via each sub-agent's own stop), max 10% of equity per position, max 3 open, -3% daily auto-stop (Dubai day).
+[general]
+paper = true
+bot = "S5"
+title = "S5 Quant"
+start_balance_sol = 1.0
+[risk]
+sizing = "risk"
+risk_per_trade_pct = 1.0
+max_position_pct = 10.0
+max_open = 3
+daily_stop_pct = 3.0
+tz_offset_hours = 4
+[agents]
+REVIVAL = true
+V1_SNIPE = true
+V1_SCANNER = true
+COPY = true
+C_GRAD = true
+LS = true
+M4_SCAN = true

@@ -6,7 +6,7 @@ import glob, hashlib, io, json, os, secrets, sqlite3, subprocess, tarfile, tempf
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 MAGIC, AAD = b"ST1", b"sentinel-state"
-KEEP_DAYS_M4_SKIPS = 3
+KEEP_DAYS_SKIPS = 3   # rejected decisions older than this are pruned from the saved copy
 
 
 def _aes(secret):
@@ -40,53 +40,38 @@ def _db_copy(src, dst, prune_sql=()):
     d.close()
 
 
-def _current_main_run(data):
-    f = os.path.join(data, "pump_run.json")
-    if os.path.exists(f):
-        try:
-            return json.load(open(f))["run"]
-        except Exception:
-            pass
-    logs = sorted(glob.glob(os.path.join(data, "pump_sentinel_P*.log")), key=os.path.getmtime)
-    return os.path.basename(logs[-1])[len("pump_sentinel_"):-4] if logs else None
+def _run_of(data, bot):
+    f = os.path.join(data, f"{bot}_bot_run.txt")
+    return open(f).read().strip() if os.path.exists(f) else None
 
 
 def pack(bot_dir, app_dir):
-    """Returns gzip-tar bytes of everything needed to continue: accounts, open positions, history, app event history."""
+    """Returns gzip-tar bytes of everything needed to continue: both bots' accounts, open positions, history, switches,
+    the retired bots' per-agent summary (legacy_agents.json) and the relay command log."""
     data = os.path.join(bot_dir, "data")
-    run = _current_main_run(data)
-    m4run = open(os.path.join(data, "m4_run.txt")).read().strip() if os.path.exists(os.path.join(data, "m4_run.txt")) else None
-    s5run = open(os.path.join(data, "s5_run.txt")).read().strip() if os.path.exists(os.path.join(data, "s5_run.txt")) else None
+    runs = {b: _run_of(data, b) for b in ("v1", "s5")}
     buf = io.BytesIO()
     with tempfile.TemporaryDirectory() as tmp, tarfile.open(fileobj=buf, mode="w:gz") as tar:
         def add(path, arc):
             if os.path.exists(path):
                 tar.add(path, arcname=arc)
-        names = ["pump_run.json", "pump_accounts.json", "pump_trades.csv", "m4_account.json", "m4_run.txt", "m4_trades.csv", "m4_state.json",
-                 "s5_account.json", "s5_run.txt", "s5_trades.csv", "s5_state.json"]
-        if run: names.append(f"pump_sentinel_{run}.log")
-        if m4run: names.append(f"m4_momentum_{m4run}.log")
-        if s5run: names.append(f"s5_quant_{s5run}.log")
-        names += [os.path.basename(p) for p in sorted(glob.glob(os.path.join(data, "pump_report_P*.txt")))[-10:]]
+        names = ["agent_toggles.json", "legacy_agents.json"]
+        for b, run in runs.items():
+            names += [f"{b}_bot_account.json", f"{b}_bot_run.txt", f"{b}_bot_trades.csv", f"{b}_bot_state.json"]
+            if run: names.append(f"{b}_bot_{run}.log")
         for n in names:
             add(os.path.join(data, n), f"bot/data/{n}")
-        cut = time.time() - KEEP_DAYS_M4_SKIPS * 86400
-        for name, prune in (("pump_sentinel.db", [("DELETE FROM decisions WHERE run != ?", (run,)), ("DELETE FROM scans WHERE run != ?", (run,)),
-                                                  ("DELETE FROM regime WHERE run != ?", (run,))]),
-                            ("m4_momentum.db", [("DELETE FROM decisions WHERE approved = 0 AND ts < ?", (cut,))]),
-                            ("s5_quant.db", [("DELETE FROM decisions WHERE approved = 0 AND ts < ?", (cut,))])):
+        cut = time.time() - KEEP_DAYS_SKIPS * 86400
+        for b in runs:
+            name = f"{b}_bot.db"
             src = os.path.join(data, name)
             if os.path.exists(src):
                 dst = os.path.join(tmp, name)
-                _db_copy(src, dst, prune if run or name != "pump_sentinel.db" else ())
+                _db_copy(src, dst, [("DELETE FROM decisions WHERE approved = 0 AND ts < ?", (cut,))])
                 tar.add(dst, arcname=f"bot/data/{name}")
-        src = os.path.join(app_dir, "app.db")
-        if os.path.exists(src):
-            dst = os.path.join(tmp, "app.db")
-            _db_copy(src, dst, [("DELETE FROM ev WHERE run != ? AND run NOT LIKE 'M%'", (run,)), ("DELETE FROM off", ())])
-            tar.add(dst, arcname="app/app.db")
+        add(os.path.join(app_dir, "logs", "toggle_commands.log"), "app/logs/toggle_commands.log")
         meta = os.path.join(tmp, "meta.json")
-        json.dump({"saved": time.time(), "main_run": run, "m4_run": m4run, "s5_run": s5run, "format": 1}, open(meta, "w"))
+        json.dump({"saved": time.time(), "v1_run": runs["v1"], "s5_run": runs["s5"], "format": 2}, open(meta, "w"))
         tar.add(meta, arcname="meta.json")
     return buf.getvalue()
 

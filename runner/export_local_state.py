@@ -19,10 +19,10 @@ blob = statestore.seal(raw, key)
 tmp = a.out + ".tmp"
 open(tmp, "wb").write(blob)
 os.replace(tmp, a.out)
-# self-check: decrypts and contains the M4 account
+# self-check: decrypts and lists the two bots' accounts
 import io, tarfile
 names = tarfile.open(fileobj=io.BytesIO(statestore.unseal(blob, key)), mode="r:gz").getnames()
-m4 = json.load(open(os.path.join(a.bot_dir, "data", "m4_account.json"))) if os.path.exists(os.path.join(a.bot_dir, "data", "m4_account.json")) else {}
-s5 = json.load(open(os.path.join(a.bot_dir, "data", "s5_account.json"))) if os.path.exists(os.path.join(a.bot_dir, "data", "s5_account.json")) else {}
-print(f"wrote {a.out}: {len(blob) // 1024} KB, {len(names)} files, M4 open positions: {len(m4.get('positions', {}))}, "
-      f"S5 open positions: {len(s5.get('positions', {}))}, S5 files: {sum(1 for n in names if '/s5_' in n)}")
+acc = {b: (json.load(open(os.path.join(a.bot_dir, "data", f"{b}_bot_account.json"))) if os.path.exists(os.path.join(a.bot_dir, "data", f"{b}_bot_account.json")) else {})
+       for b in ("v1", "s5")}
+print(f"wrote {a.out}: {len(blob) // 1024} KB, {len(names)} files, V1 open positions: {len(acc['v1'].get('positions', {}))}, "
+      f"S5 open positions: {len(acc['s5'].get('positions', {}))}, switches saved: {'bot/data/agent_toggles.json' in names}")

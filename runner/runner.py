@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """24/7 orchestrator for the PAPER-ONLY pump.fun bots on GitHub Actions (no wallets, no keys, no real transactions).
 
-One job = restore encrypted state -> run server + relay publisher + pump_sentinel + m4_momentum + s5_quant headless on localhost
--> save state every SAVE_EVERY s -> at RUN_SECONDS: SIGTERM bots (they persist open positions), final save,
-dispatch the next run. Job stdout is deliberately minimal (public logs); child output goes to files in the work dir.
+One job = restore encrypted state -> run server + relay publisher + the two multi-agent paper bots (agent_bot.py --bot V1,
+agent_bot.py --bot S5; each sub-agent has an on/off switch) headless on localhost -> save state every SAVE_EVERY s ->
+at RUN_SECONDS: SIGTERM bots (they persist open positions and switches), final save, dispatch the next run.
+The relay publisher also receives the app's authenticated on/off commands (toggle_cmd.py) and writes bot/data/agent_toggles.json,
+which is part of the saved state, so switches survive handovers. Job stdout is deliberately minimal (public logs); child output goes to files in the work dir.
 
 Env: RELAY_KEY (required, the #k= secret), RUN_SECONDS (default 20400 = 5h40m), SAVE_EVERY (900), WORK (work dir),
      STATE_BACKEND git|file, STATE_FILE (file backend), FRESH=true (allow start without saved state),
@@ -210,10 +212,10 @@ def main():
     py = sys.executable
     server = Proc("server", [py, "-m", "uvicorn", "server:app", "--host", "127.0.0.1", "--port", APP_PORT, "--log-level", "warning"], APP)
     relay = Proc("relay", [py, "relay_publisher.py"], APP)
-    main_bot = Proc("pump_sentinel", [py, "pump_sentinel.py", "--minutes", "10080", "--resume", "--keep-open-on-exit"], BOT)
-    m4 = Proc("m4_momentum", [py, "m4_momentum.py"], BOT)
-    s5 = Proc("s5_quant", [py, "s5_quant.py"], BOT)
-    procs = [server, main_bot, m4, s5, relay]
+    v1 = Proc("v1_bot", [py, "agent_bot.py", "--bot", "V1"], BOT)
+    s5 = Proc("s5_bot", [py, "agent_bot.py", "--bot", "S5"], BOT)
+    bots = (v1, s5)
+    procs = [server, v1, s5, relay]
 
     def on_signal(sig, _):
         STOP["why"] = f"signal {sig}"
@@ -245,7 +247,7 @@ def main():
     STATUS["phase"] = "handover"
     write_status()
     say(f"handover ({STOP['why'] or 'time limit'}): stopping bots")
-    for p in (main_bot, m4, s5):
+    for p in bots:
         p.restart = False
         p.stop(signal.SIGTERM, wait=120)   # bots persist open positions on SIGTERM and exit
     time.sleep(5)   # let the server/relay publish the 'handover' status once more
