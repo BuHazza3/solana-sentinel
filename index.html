@@ -133,11 +133,20 @@ h3 a{font-size:13px;color:var(--p);font-weight:600;text-decoration:none}
 .chip.on{background:var(--pd);border-color:rgba(166,107,255,.4);color:#e2d3ff}
 .sec{color:var(--mut);font-size:12px;margin-top:14px;letter-spacing:.4px;font-weight:600}
 #tSum{font-size:12px;font-weight:500;color:var(--mut)}
-#ptr{position:fixed;top:calc(var(--sat) + 6px);left:50%;transform:translate(-50%,-40px);z-index:25;width:34px;height:34px;border-radius:50%;opacity:0;pointer-events:none;
- background:rgba(30,28,40,.9);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;transition:opacity .2s}
-#ptr:before{content:'';width:14px;height:14px;border:2.5px solid var(--mut);border-top-color:transparent;border-radius:50%}
+#ptr{position:fixed;top:calc(var(--sat) + 6px);left:50%;transform:translate(-50%,-44px);z-index:25;width:36px;height:36px;border-radius:50%;opacity:0;pointer-events:none;
+ background:rgba(30,28,40,.95);border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(0,0,0,.45);
+ transition:transform .3s cubic-bezier(.2,.9,.25,1),opacity .25s}
+#ptr.drag{transition:none}
+#ptr:before{content:'';width:15px;height:15px;border:2.5px solid var(--mut);border-top-color:transparent;border-radius:50%}
 #ptr.ready:before{border-color:var(--p);border-top-color:transparent}
-#ptr.busy{transition:transform .25s,opacity .2s}#ptr.busy:before{border-color:var(--g);border-top-color:transparent;animation:rot .7s linear infinite}
+#ptr.busy{opacity:1}#ptr.busy:before{border-color:var(--g);border-top-color:transparent;animation:rot .7s linear infinite}
+.app{transition:transform .3s cubic-bezier(.2,.9,.25,1)}.app.drag{transition:none}
+html,body{overscroll-behavior-y:none}
+.rf{flex:none;width:32px;height:32px;margin-left:6px;border:0;border-radius:50%;background:var(--card2);color:var(--txt);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.conn+.rf{margin-left:6px}.hdr .conn:empty{display:none}.hdr .rf{margin-left:auto}.hdr .conn:not(:empty)+.rf{margin-left:6px}
+.rf svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.rf:active{transform:scale(.9)}.rf.busy svg{animation:rot .8s linear infinite;color:var(--g)}
+.ver{opacity:.7;font-size:10.5px}
 @keyframes rot{to{transform:rotate(360deg)}}
 #copied{position:fixed;left:50%;bottom:calc(var(--sab) + 92px);transform:translate(-50%,20px) scale(.9);z-index:40;padding:9px 16px;border-radius:99px;background:rgba(30,28,40,.95);
  border:1px solid rgba(61,255,138,.35);color:var(--g);font:700 13px Inter,system-ui;opacity:0;pointer-events:none;transition:all .22s cubic-bezier(.2,1.4,.4,1)}
@@ -192,7 +201,7 @@ html.lock,html.lock body{overflow:hidden}
 <p id="gerr" class="dn" style="font-size:12px"></p></div></div>
 
 <div class="app">
-  <div class="hdr"><div class="logo"></div><div class="ttl">Solana Sentinel</div><span id="live" class="badge stale"><i></i><span>…</span></span><span class="conn" id="conn"></span></div>
+  <div class="hdr"><div class="logo"></div><div class="ttl">Solana Sentinel</div><span id="live" class="badge stale"><i></i><span>…</span></span><span class="conn" id="conn"></span><button class="rf" id="rfBtn" aria-label="Refresh"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button></div>
   <p class="sub">PAPER MODE • <span>simulated trades, no real money</span><span id="modeTag"></span></p>
   <div class="seg" id="acctSeg"></div>
 
@@ -239,11 +248,34 @@ let S = null, ACCT = localStorage.getItem('sentinel_acct') || 'REVISED', RANGE =
 let first = true, lastMsg = 0;
 const ACCTS = [['REVISED', 'Latest rules'], ['ORIGINAL', 'Original'], ['V1_SNIPER', 'V1 sniper']];
 // service worker: app shell cache; when a new version takes over, reload once so the new app shows
-if ('serviceWorker' in navigator) {
-  const had = !!navigator.serviceWorker.controller; let reloaded = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && !reloaded) { reloaded = true; location.reload(); } });
-  navigator.serviceWorker.register('sw.js').then(r => { document.addEventListener('visibilitychange', () => { if (!document.hidden) r.update().catch(() => {}); }); }).catch(() => {});
+const APP_VERSION = 'v3';
+// ---------- updates: new versions show up on the next open/return to the app ----------
+let swReg = null, reloading = false;
+function hardReload(v) {
+  if (reloading) return; try { if (v) { if (sessionStorage.getItem('sentinel_reload_for') === v) return; sessionStorage.setItem('sentinel_reload_for', v); } } catch (e) {}
+  reloading = true; location.reload();
 }
+if ('serviceWorker' in navigator) {
+  const had = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (had) hardReload(); });
+  const skip = w => { if (w && navigator.serviceWorker.controller) w.postMessage('skipWaiting'); };
+  navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'}).then(r => {
+    swReg = r; if (r.waiting) skip(r.waiting);
+    r.addEventListener('updatefound', () => { const w = r.installing; if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') skip(w); }); });
+    r.update().catch(() => {});
+  }).catch(() => {});
+}
+let lastCheck = 0;
+async function checkUpdate() {
+  if (Date.now() - lastCheck < 4000) return; lastCheck = Date.now();
+  try { if (swReg) swReg.update().catch(() => {}); } catch (e) {}
+  if (location.protocol !== 'https:' && location.hostname !== '127.0.0.1' && location.hostname !== 'localhost') return;
+  try { const r = await fetch('version.json?ts=' + Date.now(), {cache: 'no-store'}); if (!r.ok) return; const j = await r.json();
+    if (j.v && j.v !== APP_VERSION) { pill('Updating to ' + j.v + '…'); setTimeout(() => hardReload(j.v), 1200); } } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
+addEventListener('pageshow', () => checkUpdate()); addEventListener('focus', () => checkUpdate());
+setTimeout(checkUpdate, 2500);
 const near = (e, sel) => (e.target && e.target.closest) ? e.target.closest(sel) : null;
 const tick = () => { try { navigator.vibrate && navigator.vibrate(8); } catch (e) {} };
 // bubbles
@@ -295,12 +327,14 @@ let cpT; function pill(msg) { const p = $('#copied'); p.textContent = msg; p.cla
 function doCopy(btn, t) { copyText(t).then(ok => { tick(); pill(ok ? '✓ Address copied' : 'Copy failed – long-press to copy'); btn.classList.add('ok'); setTimeout(() => btn.classList.remove('ok'), 900); }); }
 
 // ---------- global taps ----------
-document.addEventListener('click', e => {
+// delegated taps are bound to real containers (not document): iOS WebKit only turns a tap into a click when an ancestor below <body> listens for clicks
+const onTap = e => {
   const c = near(e, '[data-copy]'); if (c) { e.preventDefault(); e.stopPropagation(); doCopy(c, c.dataset.copy); return; }
   const g = near(e, '[data-go]'); if (g) { e.preventDefault(); tick(); go(g.dataset.go); if (g.dataset.tf) setTF(g.dataset.tf); return; }
   const t = near(e, '[data-tok]'); if (t) { tick(); openToken(t.dataset.tok, t.dataset.ref, t.dataset.acct); return; }
   const a = near(e, '[data-agent]'); if (a) { tick(); openAgent(a.dataset.agent); return; }
-});
+};
+['.app', '#sheet'].forEach(sel => $(sel).addEventListener('click', onTap));
 // press feedback (fast, no 300ms delay)
 document.addEventListener('touchstart', e => { const el = near(e, '.tap,.item,.stat,.ag,.tabs button,.seg button,.chip,.sbtn'); if (el) el.classList.add('pr'); }, {passive: true});
 ['touchend', 'touchcancel', 'touchmove'].forEach(ev => document.addEventListener(ev, () => $$('.pr').forEach(x => x.classList.remove('pr')), {passive: true}));
@@ -387,7 +421,7 @@ function render(anim) {
   renderTrades(); renderAct(); renderAgents(); renderRules(); renderWallets();
   $('#foot').innerHTML = `Run ${esc(S.run)} · bot ${S.bot_alive ? 'running' : 'not running'} · log updated ${ago(S.log_mtime)}<br>` +
     (S.last_cycle ? `Last scan: ${S.last_cycle.found} tokens found, ${S.last_cycle.evaluated} checked · market ${esc(S.last_cycle.regime)}` : '') +
-    `<br>Times are Dubai time (UTC+4). Unrealized values are Jupiter sell quotes. Tap any token for its chart.`;
+    `<br>Times are Dubai time (UTC+4). Unrealized values are Jupiter sell quotes. Tap any token for its chart.<br><span class="ver">App ${APP_VERSION} · pull down or tap ↻ to refresh</span>`;
   if (SH.kind) refreshSheet();
   notify();
 }
@@ -453,8 +487,8 @@ function refreshSheet() { if (SH.kind === 'tok') tokSheet(); else if (SH.kind ==
 $('#sBack').onclick = back; $('#sClose').onclick = closeSheet;
 function setChart(mint, pair) {
   const key = mint + '|' + (pair || ''); if (!mint) { $('#sChart').innerHTML = ''; SH.chartFor = null; return; } if (SH.chartFor === key) return; SH.chartFor = key;
-  const src = `https://dexscreener.com/solana/${encodeURIComponent(pair || mint)}?embed=1&loadChartSettings=0&theme=dark&trades=0&info=0&chartLeftToolbar=0&chartTheme=dark&chartStyle=1&chartType=usd&interval=1`;
-  $('#sChart').innerHTML = `<div class="chartbox"><div class="ld"><div class="spin"></div>Loading live chart…</div><iframe title="Live chart" src="${esc(src)}" allow="clipboard-write" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
+  const src = `https://dexscreener.com/solana/${encodeURIComponent(pair || mint)}?embed=1&loadChartSettings=0&theme=dark&trades=0&info=0&chartLeftToolbar=0&chartTheme=dark&chartStyle=1&chartType=marketCap&interval=1`;
+  $('#sChart').innerHTML = `<div class="chartbox"><div class="ld"><div class="spin"></div>Loading market-cap chart…</div><iframe title="Live chart" src="${esc(src)}" allow="clipboard-write" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
    <div class="alt" id="sAlt"></div>`;
   const fr = $('#sChart iframe'); let loaded = false;
   fr.addEventListener('load', () => { loaded = true; const l = $('#sChart .ld'); if (l) l.remove(); });
@@ -462,7 +496,7 @@ function setChart(mint, pair) {
 }
 function useGecko(mint, pair) { // fallback when DexScreener can't be embedded or is slow
   if (!pair) { $('#sAlt').innerHTML = `Chart didn't load. <a href="https://dexscreener.com/solana/${esc(mint)}" target="_blank" rel="noopener">Open it in DexScreener ↗</a>`; return; }
-  $('#sChart .chartbox').innerHTML = `<iframe title="Live chart" src="https://www.geckoterminal.com/solana/pools/${esc(pair)}?embed=1&info=0&swaps=0&grayscale=0&light_chart=0"></iframe>`;
+  $('#sChart .chartbox').innerHTML = `<iframe title="Live chart" src="https://www.geckoterminal.com/solana/pools/${esc(pair)}?embed=1&info=0&swaps=0&grayscale=0&light_chart=0&chart_type=market_cap&resolution=1m"></iframe>`;
 }
 function tokSheet() {
   const m = SH.mint, A = S.accounts[SH.acct] || S.accounts[ACCT], px = S.sol_usd, T = (S.tokens || {})[m] || {};
@@ -546,16 +580,38 @@ function agentSheet() {
   sh.addEventListener('touchmove', e => { if (y0 == null) return; dy = e.touches[0].clientY - y0; if (dy > 0) { sh.style.transition = 'none'; sh.style.transform = `translateY(${dy}px)`; } }, {passive: true});
   sh.addEventListener('touchend', () => { if (y0 == null) return; sh.style.transition = ''; if (dy > 110) closeSheet(); else sh.style.transform = ''; y0 = null; }, {passive: true}); })();
 
-// ---------- pull to refresh ----------
-(() => { let y0 = null, dy = 0; const ind = $('#ptr');
-  addEventListener('touchstart', e => { if (scrollY > 0 || SH.kind || near(e, '#chart')) { y0 = null; return; } y0 = e.touches[0].clientY; dy = 0; }, {passive: true});
-  addEventListener('touchmove', e => { if (y0 == null) return; dy = Math.max(0, e.touches[0].clientY - y0); const k = Math.min(1, dy / 80);
-    ind.style.transform = `translate(-50%, ${Math.min(dy, 110) * .6 - 40}px) rotate(${dy * 3}deg)`; ind.style.opacity = k; ind.classList.toggle('ready', dy > 80); }, {passive: true});
-  addEventListener('touchend', () => { if (y0 == null) return; y0 = null;
-    if (dy > 80) { tick(); ind.classList.add('busy'); ind.style.transform = 'translate(-50%, 24px)'; const t0 = lastMsg; refreshData();
-      const done = () => { ind.classList.remove('busy', 'ready'); ind.style.opacity = 0; ind.style.transform = 'translate(-50%,-40px)'; pill(lastMsg !== t0 ? '✓ Updated' : 'Up to date'); };
-      let n = 0; const iv = setInterval(() => { if (lastMsg !== t0 || ++n > 12) { clearInterval(iv); done(); } }, 250); }
-    else { ind.style.opacity = 0; ind.style.transform = 'translate(-50%,-40px)'; } }, {passive: true}); })();
+// ---------- pull to refresh (iOS Safari + home-screen app) and the header refresh button ----------
+let refreshing = false;
+function doRefresh(src) {
+  if (refreshing) return; refreshing = true; tick(); const t0 = lastMsg, ind = $('#ptr'), btn = $('#rfBtn');
+  ind.classList.add('busy'); btn.classList.add('busy'); checkUpdate(); refreshData();
+  let n = 0; const iv = setInterval(() => { if (lastMsg !== t0 || ++n > 24) { clearInterval(iv); refreshing = false; btn.classList.remove('busy'); ptrReset();
+    pill(lastMsg !== t0 ? '✓ Updated' : 'Up to date'); } }, 250);
+}
+function ptrReset() { const ind = $('#ptr'), app = $('.app'); ind.classList.remove('busy', 'ready', 'drag'); app.classList.remove('drag');
+  app.style.transform = ''; ind.style.transform = ''; ind.style.opacity = ''; }
+$('#rfBtn').onclick = e => { e.stopPropagation(); doRefresh('button'); };
+(() => {
+  const ind = $('#ptr'), app = $('.app'), TH = 52, MAX = 120; let y0 = null, x0 = 0, pull = 0, active = false;
+  const atTop = () => Math.max(window.scrollY || 0, (document.scrollingElement || document.documentElement).scrollTop || 0, document.body.scrollTop || 0) <= 0;
+  document.addEventListener('touchstart', e => {
+    y0 = null; if (refreshing || SH.kind || e.touches.length !== 1 || !atTop() || near(e, '#chart,.chips,#sheet,#sheetBg,.tabs,#gate,#toasts')) return;
+    y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; pull = 0; active = false;
+  }, {passive: true});
+  document.addEventListener('touchmove', e => {
+    if (y0 == null) return; const t = e.touches[0], d = t.clientY - y0, dx = Math.abs(t.clientX - x0);
+    if (!active) { if (d > 8 && dx < d && atTop()) active = true; else { if (d < -4 || dx > 12) y0 = null; return; } }
+    if (e.cancelable) e.preventDefault(); // we own this gesture: stop the page from bouncing/scrolling under the finger
+    pull = Math.min(MAX, Math.max(0, d - 8) * 0.5);
+    ind.classList.add('drag'); app.classList.add('drag'); ind.classList.toggle('ready', pull >= TH);
+    app.style.transform = `translateY(${pull}px)`; ind.style.opacity = Math.min(1, pull / 30);
+    ind.style.transform = `translate(-50%, ${pull - 44}px) rotate(${pull * 4}deg)`;
+  }, {passive: false});
+  const end = () => { if (y0 == null) return; y0 = null; if (!active) return; active = false;
+    if (pull >= TH) { app.classList.remove('drag'); ind.classList.remove('drag'); app.style.transform = 'translateY(52px)'; ind.style.transform = 'translate(-50%, 8px)'; doRefresh('pull'); }
+    else ptrReset(); };
+  document.addEventListener('touchend', end, {passive: true}); document.addEventListener('touchcancel', end, {passive: true});
+})();
 
 // ---------- trade alerts ----------
 function notify() {
