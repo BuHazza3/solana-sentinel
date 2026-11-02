@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """24/7 orchestrator for the PAPER-ONLY pump.fun bots on GitHub Actions (no wallets, no keys, no real transactions).
 
-One job = restore encrypted state -> run server + relay publisher + pump_sentinel + m4_momentum headless on localhost
+One job = restore encrypted state -> run server + relay publisher + pump_sentinel + m4_momentum + s5_quant headless on localhost
 -> save state every SAVE_EVERY s -> at RUN_SECONDS: SIGTERM bots (they persist open positions), final save,
 dispatch the next run. Job stdout is deliberately minimal (public logs); child output goes to files in the work dir.
 
@@ -37,6 +37,7 @@ PROBES = {   # public, read-only endpoints the bots depend on (datacenter IPs ar
     "pump.fun": "https://frontend-api-v3.pump.fun/coins?offset=0&limit=1&sort=last_trade_timestamp&order=DESC&includeNsfw=false",
     "DexScreener": "https://api.dexscreener.com/token-profiles/latest/v1",
     "Jupiter": "https://lite-api.jup.ag/price/v3?ids=So11111111111111111111111111111111111111112",
+    "Jupiter charts": "https://datapi.jup.ag/v2/charts/So11111111111111111111111111111111111111112?interval=1_MINUTE&to=4102444800000&candles=1&type=price",
     "RugCheck": "https://api.rugcheck.xyz/v1/stats/new_tokens",
     "Solana RPC": "https://api.mainnet-beta.solana.com",
 }
@@ -211,7 +212,8 @@ def main():
     relay = Proc("relay", [py, "relay_publisher.py"], APP)
     main_bot = Proc("pump_sentinel", [py, "pump_sentinel.py", "--minutes", "10080", "--resume", "--keep-open-on-exit"], BOT)
     m4 = Proc("m4_momentum", [py, "m4_momentum.py"], BOT)
-    procs = [server, main_bot, m4, relay]
+    s5 = Proc("s5_quant", [py, "s5_quant.py"], BOT)
+    procs = [server, main_bot, m4, s5, relay]
 
     def on_signal(sig, _):
         STOP["why"] = f"signal {sig}"
@@ -243,7 +245,7 @@ def main():
     STATUS["phase"] = "handover"
     write_status()
     say(f"handover ({STOP['why'] or 'time limit'}): stopping bots")
-    for p in (main_bot, m4):
+    for p in (main_bot, m4, s5):
         p.restart = False
         p.stop(signal.SIGTERM, wait=120)   # bots persist open positions on SIGTERM and exit
     time.sleep(5)   # let the server/relay publish the 'handover' status once more

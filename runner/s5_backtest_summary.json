@@ -1,0 +1,15 @@
+{
+ "generated": "2026-11-02 18:20 Dubai",
+ "tested": 10,
+ "passed": 0,
+ "verdict": "No strategy passed (needed 18+/25, PF>1.3, DD<20%, 100+ trades). S5 runs the least-bad one as a forward paper test.",
+ "s5_pf": 0.9,
+ "lines": [
+  "Estimates from a backtest on real 1-minute Jupiter candles (cross-checked with GeckoTerminal) for 1,673 pump.fun tokens our bots saw on 2 Nov 2026, 05:32\u201317:56 Dubai time. Only about 12 hours of data.",
+  "Costs counted: pump.fun pool fee each side (1.25% on the curve), 1% latency slippage per fill, price impact for the trade size, 0.000605 SOL network fees per transaction.",
+  "Revival: 34 trades, 32% wins, profit factor 0.90, -2.6% at 1% risk per trade, max drawdown 10.4%.",
+  "Train (before 12:58): 15 trades, PF 1.20. Unseen later data: 19 trades, PF 0.61, -5.0%. It did not hold up out of sample.",
+  "With the account rules (max 3 open, \u22123% daily stop): 26 trades taken, equity 1.012 SOL, drawdown 6.7%.",
+  "Only 34 trades: far too few to trust. Without its best trade it loses. WHY THIS COULD FAIL: tiny sample, one day only, and the edge vanished on the unseen part."
+ ]
+}

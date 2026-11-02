@@ -247,9 +247,9 @@ html.lock,html.lock body{overflow:hidden}
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 let S = null, ACCT = localStorage.getItem('sentinel_acct') || 'REVISED', RANGE = 0, AF = 'all', TF = 'all', TA = 'all', seen = null, shown = {bal: null};
 let first = true, lastMsg = 0;
-const ACCTS = [['REVISED', 'Latest rules'], ['ORIGINAL', 'Original'], ['V1_SNIPER', 'V1 sniper'], ['M4', 'M4 Momentum']];
+const ACCTS = [['REVISED', 'Latest rules'], ['ORIGINAL', 'Original'], ['V1_SNIPER', 'V1 sniper'], ['M4', 'M4 Momentum'], ['S5', 'S5 Quant']];
 // service worker: app shell cache; when a new version takes over, reload once so the new app shows
-const APP_VERSION = 'v5';
+const APP_VERSION = 'v6';
 // ---------- updates: new versions show up on the next open/return to the app ----------
 let swReg = null, reloading = false;
 function hardReload(v) {
@@ -420,7 +420,7 @@ function render(anim) {
      <div class="s">${q.trades ? usdS(q.pnl_sol, px) + ' · ' : ''}${q.trades} trades · ${q.win_rate == null ? 'win n/a' : Math.round(q.win_rate) + '% win'}</div></div>`; }).join('')}</div>`
     : '<div class="empty">This run does not split by pump.fun phase.</div>';
   renderTrades(); renderAct(); renderAgents(); renderRules(); renderWallets();
-  $('#foot').innerHTML = `Run ${esc(S.run)} · bot ${S.bot_alive ? 'running' : 'not running'} · log updated ${ago(S.log_mtime)}` + (S.accounts.M4 ? ` · M4 ${S.accounts.M4.alive ? 'running' : 'not running'}` : '') + runnerLine() + '<br>' +
+  $('#foot').innerHTML = `Run ${esc(S.run)} · bot ${S.bot_alive ? 'running' : 'not running'} · log updated ${ago(S.log_mtime)}` + (S.accounts.M4 ? ` · M4 ${S.accounts.M4.alive ? 'running' : 'not running'}` : '') + (S.accounts.S5 ? ` · S5 ${S.accounts.S5.alive ? 'running' : 'not running'}` : '') + runnerLine() + '<br>' +
     (S.last_cycle ? `Last scan: ${S.last_cycle.found} tokens found, ${S.last_cycle.evaluated} checked · market ${esc(S.last_cycle.regime)}` : '') +
     `<br>Times are Dubai time (UTC+4). Unrealized values are Jupiter sell quotes. Tap any token for its chart.<br><span class="ver">App ${APP_VERSION} · pull down or tap ↻ to refresh</span>`;
   if (SH.kind) refreshSheet();
@@ -438,7 +438,7 @@ function renderTrades() {
   if (!S) return; const A = S.accounts[ACCT], px = S.sol_usd;
   const ags = [...new Set([...A.closes, ...A.holdings].map(x => x.strategy))];
   if (TA !== 'all' && !ags.includes(TA)) TA = 'all';
-  const nm = k => ({A: 'Copy wallet', B: 'Multi-whale', C: 'Momentum', LS: 'Launch sniper', V1: 'V1 sniper', M4: 'M4 Momentum'}[k] || k);
+  const nm = k => ({A: 'Copy wallet', B: 'Multi-whale', C: 'Momentum', LS: 'Launch sniper', V1: 'V1 sniper', M4: 'M4 Momentum', S5: 'S5 Quant'}[k] || k);
   $('#tAg').innerHTML = ags.length > 1 || TA !== 'all' ? [['all', 'All agents'], ...ags.map(k => [k, nm(k)])].map(([k, l]) => `<button class="chip ${k === TA ? 'on' : ''}" data-ag="${k}">${l}</button>`).join('') : '';
   const byA = x => TA === 'all' || x.strategy === TA;
   let cl = A.closes.filter(byA), ho = A.holdings.filter(byA);
@@ -461,7 +461,7 @@ function renderAct() {
     return `<div class="item ${full ? 'tap' : ''}" ${full ? `data-tok="${esc(a.mint)}"` : ''}>${a.img ? av(a.title.split(' ').pop(), a.img) : `<div class="av" style="background:${bg};font-size:16px">${ic}</div>`}
      <div class="mid"><b>${esc(a.title)}</b><span class="wrap">${esc(a.sub)} · ${tDubai(a.ts)}</span></div><div class="rt">${right}</div></div>`; }).join('') : '<div class="empty">Nothing yet.</div>';
 }
-const EMO = {F: '🌡️', SAFE: '🛡️', A: '👤', B: '🐋', C: '📈', LS: '🎯', V1: '⚡', RISK: '⚖️', M4: '🚀', COPY: '👥'};
+const EMO = {F: '🌡️', SAFE: '🛡️', A: '👤', B: '🐋', C: '📈', LS: '🎯', V1: '⚡', RISK: '⚖️', M4: '🚀', COPY: '👥', S5: '🧪', DESK: '📊'};
 function agState(g, A) { const online = (A.alive != null ? A.alive : S.bot_alive && S.fresh) && g.used, halted = g.key === 'RISK' && A.halt;
   return [halted ? 'halt' : online ? 'on' : 'off', halted ? 'HALTED' : online ? 'ONLINE' : g.used ? 'OFFLINE' : 'NOT USED']; }
 function agMx(g) { return g.metrics ? g.metrics.map(([k, v]) => `<div><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join('') :
@@ -567,14 +567,14 @@ function tokSheet() {
   // history
   const parts = []; for (const [an, a] of Object.entries(S.accounts)) (a.partials || []).forEach(p => p.mint === m && parts.push({...p, acct: an}));
   const hist = [...ent.map(e => ({ts: e.ts, t: 'buy', e})), ...parts.map(e => ({ts: e.ts, t: 'part', e})), ...all.filter(x => x.k === 'closed').map(x => ({ts: x.closed, t: 'sell', e: x}))].sort((a, b) => b.ts - a.ts);
-  const H = hist.length ? hist.map(({t, e}) => t === 'part' ? `<div class="hi"><i class="sell">💰</i><div class="mid"><b>Initials pulled · ${esc(e.strategy_name)}</b><span>${dtDubai(e.ts)} · sold ${Math.round(e.frac * 100)}% · moonbag rides</span></div><div class="rt"><b class="up">${f4(e.sol_out)}</b><span class="mut">${usd(e.sol_out, e.sol_usd || px)}</span></div></div>` : `<div class="hi ${e.id === (pos && pos.id) ? 'cur' : ''}" ${t === 'sell' ? `data-tok="${esc(m)}" data-ref="${esc(e.id)}" data-acct="${esc(e.acct)}"` : ''}><i class="${t}">${t === 'buy' ? '↗' : '↘'}</i><div class="mid"><b>${t === 'buy' ? 'Bought' : 'Sold'} · ${esc(e.strategy_name)}</b><span>${dtDubai(t === 'buy' ? e.ts : e.closed)} · ${esc(acName(e.acct))}${t === 'sell' ? ' · ' + esc(String(e.reason).replace(/_/g, ' ')) : ''}</span></div>
+  const H = hist.length ? hist.map(({t, e}) => t === 'part' ? `<div class="hi"><i class="sell">💰</i><div class="mid"><b>${e.strategy === 'S5' ? 'Took profit' : 'Initials pulled'} · ${esc(e.strategy_name)}</b><span>${dtDubai(e.ts)} · sold ${Math.round(e.frac * 100)}% · ${e.strategy === 'S5' ? 'rest on a trailing stop' : 'moonbag rides'}</span></div><div class="rt"><b class="up">${f4(e.sol_out)}</b><span class="mut">${usd(e.sol_out, e.sol_usd || px)}</span></div></div>` : `<div class="hi ${e.id === (pos && pos.id) ? 'cur' : ''}" ${t === 'sell' ? `data-tok="${esc(m)}" data-ref="${esc(e.id)}" data-acct="${esc(e.acct)}"` : ''}><i class="${t}">${t === 'buy' ? '↗' : '↘'}</i><div class="mid"><b>${t === 'buy' ? 'Bought' : 'Sold'} · ${esc(e.strategy_name)}</b><span>${dtDubai(t === 'buy' ? e.ts : e.closed)} · ${esc(acName(e.acct))}${t === 'sell' ? ' · ' + esc(String(e.reason).replace(/_/g, ' ')) : ''}</span></div>
      <div class="rt">${t === 'buy' ? `<b>${f4(e.size_sol)} SOL</b><span class="mut">${usd(e.size_sol, e.sol_usd || px)}</span>` : `<b class="${cls(e.pnl_sol)}">${sgn(e.pnl_sol)}</b><span class="${cls(e.pnl_sol)}">${pct(e.pnl_pct)}</span>`}</div></div>`).join('') : '<div class="empty">No trades in this token yet.</div>';
   $('#sBody').innerHTML = `${mk}${P}
     <div class="links"><a class="sbtn" href="https://dexscreener.com/solana/${esc(pair || m)}" target="_blank" rel="noopener">DexScreener ↗</a><a class="sbtn" href="https://pump.fun/coin/${esc(m)}" target="_blank" rel="noopener">pump.fun ↗</a><a class="sbtn" href="https://solscan.io/token/${esc(m)}" target="_blank" rel="noopener">Solscan ↗</a></div>
     <h4 class="sh4">Trade history <span class="mut">${hist.length}</span></h4>${H}
     <p class="note">Paper trades only. Prices: DexScreener (now) and the bot's Jupiter quotes (entry/exit).</p>`;
 }
-const acName = a => ({REVISED: 'Latest rules', ORIGINAL: 'Original', V1_SNIPER: 'V1 sniper', M4: 'M4 Momentum'}[a] || a);
+const acName = a => ({REVISED: 'Latest rules', ORIGINAL: 'Original', V1_SNIPER: 'V1 sniper', M4: 'M4 Momentum', S5: 'S5 Quant'}[a] || a);
 const m4Plan = pl => [['Stop loss', '−' + pl.stop_loss_pct + '% on the whole position'], ['Pull initials', `at ${pl.initials_at_x}x: sell enough to get the SOL + fees back`],
   ['Moonbag trail', `${pl.moonbag_trail_pct}% below its high, never below entry`], ['Moonbag cap', `sell all at ${pl.moonbag_cap_x}x`],
   ['Max hold', `${pl.max_hold_minutes} min before initials · ${pl.moonbag_max_hold_minutes} min moonbag`], ['Exit if liquidity drops', pl.liq_drop_exit_pct + '%']];
@@ -584,11 +584,11 @@ function agentSheet() {
   setChart(null); const A = S.accounts[SH.acct] || S.accounts[ACCT], px = S.sol_usd, g = A.agents.find(x => x.key === SH.agent); if (!g) return closeSheet();
   const [stc, stt] = agState(g, A);
   $('#sHead').innerHTML = `<div class="th"><div class="av lg ic2">${EMO[g.key] || '•'}</div><div class="mid"><b>${esc(g.title)}</b><span class="wrap">${esc(g.desc)}</span></div><span class="st ${stc}"><i></i>${stt}</span></div>`;
-  const pl = (A.plans || {})[g.key], tr = ['A', 'B', 'C', 'LS', 'V1', 'M4'].includes(g.key);
+  const pl = (A.plans || {})[g.key], tr = ['A', 'B', 'C', 'LS', 'V1', 'M4', 'S5'].includes(g.key);
   const plan = pl && pl.initials_at_x ? `<div class="card pos"><h4>Exit plan <span class="mut">${esc(acName(SH.acct))}</span></h4>${kv(m4Plan(pl))}</div>` : pl && pl.take_profit_pct != null ? `<div class="card pos"><h4>Exit plan <span class="mut">${esc(acName(SH.acct))}</span></h4>${kv([['Take profit', '+' + pl.take_profit_pct + '%'], ['Stop loss', '−' + pl.stop_loss_pct + '%'],
     ...(pl.trailing_stop_pct != null ? [['Trailing stop', `${pl.trailing_stop_pct}% after +${pl.trailing_activate_pct}%`]] : []), ...(pl.breakeven_at_pct ? [['Break-even stop at', '+' + pl.breakeven_at_pct + '%']] : []),
     ...(pl.max_hold_minutes ? [['Max hold', pl.max_hold_minutes + ' min']] : []), ...(pl.liq_drop_exit_pct ? [['Exit if liquidity drops', pl.liq_drop_exit_pct + '%']] : [])])}</div>` : '';
-  const RK = SH.acct === 'M4' ? {M4: 'M4 Momentum', COPY: 'M4 copy-wallet boost', SAFE: 'M4 anti-rug checks', RISK: 'M4 Momentum'}[g.key] : RULE[g.key];
+  const RK = SH.acct === 'M4' ? {M4: 'M4 Momentum', COPY: 'M4 copy-wallet boost', SAFE: 'M4 anti-rug checks', RISK: 'M4 Momentum'}[g.key] : SH.acct === 'S5' ? {S5: 'S5 Quant · Revival', DESK: 'S5 backtest (estimate)', RISK: 'S5 Quant · Revival'}[g.key] : RULE[g.key];
   const rs = (S.rules || []).filter(r => r.title === RK || ((g.key === 'A' || (SH.acct === 'M4' && g.key === 'COPY')) && r.title === 'Copied wallets'));
   const rules = rs.length ? rs.map(r => `<div class="card rule"><h4>${esc(r.title)}</h4>${r.lines.map(l => `<p>${esc(l)}</p>`).join('')}</div>`).join('') :
     g.key === 'V1' ? `<div class="card rule"><h4>V1 sniper (your first rules)</h4><p>Buys new pump.fun tokens from the scanner with looser checks and no market gate, up to 15% of balance (max 0.15 SOL), 3 at a time.</p></div>` : '';
@@ -647,14 +647,14 @@ function notify() {
 }
 function toast(e) {
   const px = S.sol_usd, d = document.createElement('div'); d.className = 'toast';
-  if (e.k === 'partial') d.innerHTML = `${av(e.symbol, e.img)}<div class="mid"><b>💰 Initials pulled · ${esc(e.symbol)}</b><span>${esc(e.strategy_name)} · sold ${Math.round(e.frac * 100)}% for ${f4(e.sol_out)} SOL · moonbag rides</span></div><div class="rt"><b class="up">${f4(e.sol_out)}</b><span class="up">SOL · ${usd(e.sol_out, e.sol_usd || px)}</span></div>`;
+  if (e.k === 'partial') d.innerHTML = `${av(e.symbol, e.img)}<div class="mid"><b>💰 ${e.strategy === 'S5' ? 'Took profit' : 'Initials pulled'} · ${esc(e.symbol)}</b><span>${esc(e.strategy_name)} · sold ${Math.round(e.frac * 100)}% for ${f4(e.sol_out)} SOL · ${e.strategy === 'S5' ? 'rest on a trailing stop' : 'moonbag rides'}</span></div><div class="rt"><b class="up">${f4(e.sol_out)}</b><span class="up">SOL · ${usd(e.sol_out, e.sol_usd || px)}</span></div>`;
   else if (e.k === 'buy') d.innerHTML = `${av(e.symbol, e.img)}<div class="mid"><b>Bought ${esc(e.symbol)}</b><span>${esc(e.strategy_name)} · ${f4(e.size_sol)} SOL · ${usd(e.size_sol, px)}</span></div><div class="rt"><b style="color:var(--p)">BUY</b><span class="mut">${tDubai(e.ts)}</span></div>`;
   else d.innerHTML = `${av(e.symbol, e.img)}<div class="mid"><b>Sold ${esc(e.symbol)} · held ${hold(e.hold_s)}</b><span>${esc(e.strategy_name)} · ${f4(e.size_sol)} SOL in · ${esc(e.reason.replace(/_/g, ' '))}</span></div>
      <div class="rt"><div class="big ${cls(e.pnl_sol)}">${sgn(e.pnl_sol)}</div><span class="${cls(e.pnl_sol)}">SOL · ${usdS(e.pnl_sol, e.sol_usd || px)} · ${e.pnl_pct >= 0 ? '+' : ''}${e.pnl_pct.toFixed(1)}%</span></div>`;
   $('#toasts').prepend(d); tick();
   if ((e.k === 'sell' && e.pnl_sol > 0) || e.k === 'partial') confetti();
   const out = () => { d.classList.add('out'); setTimeout(() => d.remove(), 400); };
-  d.onclick = () => { out(); openToken(e.mint, e.k === 'sell' ? e.id : null, e.k === 'partial' ? 'M4' : null); };
+  d.onclick = () => { out(); openToken(e.mint, e.k === 'sell' ? e.id : null, e.k === 'partial' ? (e.strategy === 'S5' ? 'S5' : 'M4') : null); };
   setTimeout(out, 6500);
 }
 function confetti() {

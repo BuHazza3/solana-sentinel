@@ -23,4 +23,6 @@ os.replace(tmp, a.out)
 import io, tarfile
 names = tarfile.open(fileobj=io.BytesIO(statestore.unseal(blob, key)), mode="r:gz").getnames()
 m4 = json.load(open(os.path.join(a.bot_dir, "data", "m4_account.json"))) if os.path.exists(os.path.join(a.bot_dir, "data", "m4_account.json")) else {}
-print(f"wrote {a.out}: {len(blob) // 1024} KB, {len(names)} files, M4 open positions: {len(m4.get('positions', {}))}")
+s5 = json.load(open(os.path.join(a.bot_dir, "data", "s5_account.json"))) if os.path.exists(os.path.join(a.bot_dir, "data", "s5_account.json")) else {}
+print(f"wrote {a.out}: {len(blob) // 1024} KB, {len(names)} files, M4 open positions: {len(m4.get('positions', {}))}, "
+      f"S5 open positions: {len(s5.get('positions', {}))}, S5 files: {sum(1 for n in names if '/s5_' in n)}")

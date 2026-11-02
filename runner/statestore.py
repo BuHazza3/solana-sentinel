@@ -56,21 +56,25 @@ def pack(bot_dir, app_dir):
     data = os.path.join(bot_dir, "data")
     run = _current_main_run(data)
     m4run = open(os.path.join(data, "m4_run.txt")).read().strip() if os.path.exists(os.path.join(data, "m4_run.txt")) else None
+    s5run = open(os.path.join(data, "s5_run.txt")).read().strip() if os.path.exists(os.path.join(data, "s5_run.txt")) else None
     buf = io.BytesIO()
     with tempfile.TemporaryDirectory() as tmp, tarfile.open(fileobj=buf, mode="w:gz") as tar:
         def add(path, arc):
             if os.path.exists(path):
                 tar.add(path, arcname=arc)
-        names = ["pump_run.json", "pump_accounts.json", "pump_trades.csv", "m4_account.json", "m4_run.txt", "m4_trades.csv", "m4_state.json"]
+        names = ["pump_run.json", "pump_accounts.json", "pump_trades.csv", "m4_account.json", "m4_run.txt", "m4_trades.csv", "m4_state.json",
+                 "s5_account.json", "s5_run.txt", "s5_trades.csv", "s5_state.json"]
         if run: names.append(f"pump_sentinel_{run}.log")
         if m4run: names.append(f"m4_momentum_{m4run}.log")
+        if s5run: names.append(f"s5_quant_{s5run}.log")
         names += [os.path.basename(p) for p in sorted(glob.glob(os.path.join(data, "pump_report_P*.txt")))[-10:]]
         for n in names:
             add(os.path.join(data, n), f"bot/data/{n}")
         cut = time.time() - KEEP_DAYS_M4_SKIPS * 86400
         for name, prune in (("pump_sentinel.db", [("DELETE FROM decisions WHERE run != ?", (run,)), ("DELETE FROM scans WHERE run != ?", (run,)),
                                                   ("DELETE FROM regime WHERE run != ?", (run,))]),
-                            ("m4_momentum.db", [("DELETE FROM decisions WHERE approved = 0 AND ts < ?", (cut,))])):
+                            ("m4_momentum.db", [("DELETE FROM decisions WHERE approved = 0 AND ts < ?", (cut,))]),
+                            ("s5_quant.db", [("DELETE FROM decisions WHERE approved = 0 AND ts < ?", (cut,))])):
             src = os.path.join(data, name)
             if os.path.exists(src):
                 dst = os.path.join(tmp, name)
@@ -82,7 +86,7 @@ def pack(bot_dir, app_dir):
             _db_copy(src, dst, [("DELETE FROM ev WHERE run != ? AND run NOT LIKE 'M%'", (run,)), ("DELETE FROM off", ())])
             tar.add(dst, arcname="app/app.db")
         meta = os.path.join(tmp, "meta.json")
-        json.dump({"saved": time.time(), "main_run": run, "m4_run": m4run, "format": 1}, open(meta, "w"))
+        json.dump({"saved": time.time(), "main_run": run, "m4_run": m4run, "s5_run": s5run, "format": 1}, open(meta, "w"))
         tar.add(meta, arcname="meta.json")
     return buf.getvalue()
 

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 from enrich import enrich
 import m4_view
+import s5_view
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse, PlainTextResponse
 
@@ -424,6 +425,12 @@ def build_state():
             accounts["M4"] = m4
     except Exception as e:
         STATE["m4_err"] = repr(e)
+    try:
+        s5 = s5_view.build(sol_at, reg_pts, sol_usd, token_info, plain, phase_split)
+        if s5:
+            accounts["S5"] = s5
+    except Exception as e:
+        STATE["s5_err"] = repr(e)
     return {"runner": runner_status(), "run": run, "now": now, "log_mtime": mtime, "fresh": fresh, "bot_alive": alive, "sol_usd": sol_usd,
             "started": statuses[0][0] if statuses else None, "last_cycle": cycles[-1][1] if cycles else None,
             "last_cycle_ts": cycles[-1][0] if cycles else None, "accounts": accounts, "rules": rules_text(), "mode": MODE, "wallets": wallets()}
@@ -457,6 +464,7 @@ def rules_text():
             f"Bonding-curve tokens: liquidity ≥${S['A'].get('min_liquidity_bonding_usd', 0):,} for copy trades; momentum needs age ≥{S['C'].get('bonding_min_age_minutes')} min, curve progress ≥{S['C'].get('bonding_min_progress_pct')}%, ≥{S['C'].get('bonding_min_buys_5m')} buys in 5 min.",
             f"Sniper on the curve: progress between {LS.get('min_progress_pct')}% and {LS.get('max_progress_pct')}%."]}] if MODE == "pump" else []),
         *m4_view.rules(),
+        *s5_view.rules(),
         {"title": "Paper mode", "lines": ["Simulated trades only: real live prices and real Jupiter quotes, no wallet, no keys, no transactions."]},
     ]
 
