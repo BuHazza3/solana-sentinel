@@ -188,6 +188,7 @@ html.lock,html.lock body{overflow:hidden}
 .hi .mid b{font-size:13.5px}.hi .rt b{font-size:13.5px}
 .note{color:var(--mut);font-size:11.5px;line-height:1.5;margin-top:16px;text-align:center}
 .ag .h .chev{margin-left:4px}
+.m4s{display:block;margin-top:3px;width:max-content;max-width:100%;font-size:11px;font-weight:600;color:var(--mut);background:rgba(255,255,255,.06);padding:2px 7px;border-radius:7px}.m4s.ok{color:#ffd84d;background:rgba(255,216,77,.12)}
 </style>
 </head>
 <body>
@@ -246,9 +247,9 @@ html.lock,html.lock body{overflow:hidden}
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 let S = null, ACCT = localStorage.getItem('sentinel_acct') || 'REVISED', RANGE = 0, AF = 'all', TF = 'all', TA = 'all', seen = null, shown = {bal: null};
 let first = true, lastMsg = 0;
-const ACCTS = [['REVISED', 'Latest rules'], ['ORIGINAL', 'Original'], ['V1_SNIPER', 'V1 sniper']];
+const ACCTS = [['REVISED', 'Latest rules'], ['ORIGINAL', 'Original'], ['V1_SNIPER', 'V1 sniper'], ['M4', 'M4 Momentum']];
 // service worker: app shell cache; when a new version takes over, reload once so the new app shows
-const APP_VERSION = 'v3';
+const APP_VERSION = 'v4';
 // ---------- updates: new versions show up on the next open/return to the app ----------
 let swReg = null, reloading = false;
 function hardReload(v) {
@@ -390,7 +391,7 @@ function closeRow(x, px) { const bg = x.pnl_pct >= 20;
   <div class="rt"><b class="${cls(x.pnl_sol)}">${sgn(x.pnl_sol)} SOL</b><span class="${cls(x.pnl_sol)}">${usdS(x.pnl_sol, x.sol_usd || px)} · ${x.pnl_pct >= 0 ? '+' : ''}${x.pnl_pct.toFixed(1)}%</span></div></div>`; }
 function holdRow(h, px) {
   return `<div class="item tap hold" data-tok="${esc(h.mint)}" data-ref="${esc(h.id || '')}">${av(h.symbol, h.img)}<div class="mid"><b>${esc(h.symbol)}${phT(h.phase)}</b>
-    <span>${esc(h.strategy_name)} · in ${f4(h.size_sol)} SOL · ${hold(S.now - h.opened)}</span>${copyChip(h.mint)}</div>
+    <span>${esc(h.strategy_name)} · in ${f4(h.size_sol)} SOL · ${hold(S.now - h.opened)}</span>${h.stage ? `<span class="m4s ${h.stage === 'initials_pulled' ? 'ok' : ''}">${h.stage === 'initials_pulled' ? '💰 Initials pulled · moonbag ' + Math.round(h.left_pct || 0) + '%' : 'Stop −' + ((h.exit_plan || {}).stop_loss_pct || 20) + '% · initials at ' + ((h.exit_plan || {}).initials_at_x || 2) + 'x'}</span>` : ''}${copyChip(h.mint)}</div>
     <div class="rt">${h.value_sol == null ? `<b class="mut">n/a</b><span class="mut">no sell quote</span>` :
      `<b>${f4(h.value_sol)} SOL</b><span class="${cls(h.upnl_sol)}">${usdS(h.upnl_sol, px)} · ${h.upnl_pct >= 0 ? '+' : ''}${h.upnl_pct.toFixed(1)}%</span>`}</div></div>`; }
 
@@ -419,7 +420,7 @@ function render(anim) {
      <div class="s">${q.trades ? usdS(q.pnl_sol, px) + ' · ' : ''}${q.trades} trades · ${q.win_rate == null ? 'win n/a' : Math.round(q.win_rate) + '% win'}</div></div>`; }).join('')}</div>`
     : '<div class="empty">This run does not split by pump.fun phase.</div>';
   renderTrades(); renderAct(); renderAgents(); renderRules(); renderWallets();
-  $('#foot').innerHTML = `Run ${esc(S.run)} · bot ${S.bot_alive ? 'running' : 'not running'} · log updated ${ago(S.log_mtime)}<br>` +
+  $('#foot').innerHTML = `Run ${esc(S.run)} · bot ${S.bot_alive ? 'running' : 'not running'} · log updated ${ago(S.log_mtime)}` + (S.accounts.M4 ? ` · M4 ${S.accounts.M4.alive ? 'running' : 'not running'}` : '') + '<br>' +
     (S.last_cycle ? `Last scan: ${S.last_cycle.found} tokens found, ${S.last_cycle.evaluated} checked · market ${esc(S.last_cycle.regime)}` : '') +
     `<br>Times are Dubai time (UTC+4). Unrealized values are Jupiter sell quotes. Tap any token for its chart.<br><span class="ver">App ${APP_VERSION} · pull down or tap ↻ to refresh</span>`;
   if (SH.kind) refreshSheet();
@@ -429,7 +430,7 @@ function renderTrades() {
   if (!S) return; const A = S.accounts[ACCT], px = S.sol_usd;
   const ags = [...new Set([...A.closes, ...A.holdings].map(x => x.strategy))];
   if (TA !== 'all' && !ags.includes(TA)) TA = 'all';
-  const nm = k => ({A: 'Copy wallet', B: 'Multi-whale', C: 'Momentum', LS: 'Launch sniper', V1: 'V1 sniper'}[k] || k);
+  const nm = k => ({A: 'Copy wallet', B: 'Multi-whale', C: 'Momentum', LS: 'Launch sniper', V1: 'V1 sniper', M4: 'M4 Momentum'}[k] || k);
   $('#tAg').innerHTML = ags.length > 1 || TA !== 'all' ? [['all', 'All agents'], ...ags.map(k => [k, nm(k)])].map(([k, l]) => `<button class="chip ${k === TA ? 'on' : ''}" data-ag="${k}">${l}</button>`).join('') : '';
   const byA = x => TA === 'all' || x.strategy === TA;
   let cl = A.closes.filter(byA), ho = A.holdings.filter(byA);
@@ -442,17 +443,18 @@ function renderTrades() {
 }
 function renderAct() {
   if (!S) return; const A = S.accounts[ACCT], px = S.sol_usd;
-  const L = A.activity.filter(a => AF === 'all' || (AF === 'trade' ? (a.type === 'buy' || a.type === 'sell') : a.type === AF)).slice(0, 80);
-  const icon = {buy: ['↗', 'rgba(166,107,255,.25)'], sell: ['↘', 'rgba(61,255,138,.18)'], copy: ['👁', 'rgba(80,160,255,.2)'], skip: ['⦸', 'rgba(255,255,255,.08)']};
+  const L = A.activity.filter(a => AF === 'all' || (AF === 'trade' ? (a.type === 'buy' || a.type === 'sell' || a.type === 'partial') : a.type === AF)).slice(0, 80);
+  const icon = {buy: ['↗', 'rgba(166,107,255,.25)'], sell: ['↘', 'rgba(61,255,138,.18)'], partial: ['💰', 'rgba(255,216,77,.18)'], copy: ['👁', 'rgba(80,160,255,.2)'], skip: ['⦸', 'rgba(255,255,255,.08)']};
   $('#act').innerHTML = L.length ? L.map(a => { const [ic, bg] = icon[a.type];
     const right = a.type === 'sell' ? `<b class="${cls(a.sol)}">${sgn(a.sol)} SOL</b><span class="${cls(a.sol)}">${usdS(a.sol, a.sol_usd || px)} · ${a.pct >= 0 ? '+' : ''}${a.pct.toFixed(1)}%</span>`
-      : a.type === 'buy' ? `<b>${f4(-a.sol)} SOL</b><span class="mut">${usd(-a.sol, a.sol_usd || px)}</span>` : '';
+      : a.type === 'buy' ? `<b>${f4(-a.sol)} SOL</b><span class="mut">${usd(-a.sol, a.sol_usd || px)}</span>`
+      : a.type === 'partial' ? `<b class="up">${f4(a.sol)} SOL</b><span class="mut">${usd(a.sol, a.sol_usd || px)} back</span>` : '';
     const full = a.mint && a.mint.length > 30;
     return `<div class="item ${full ? 'tap' : ''}" ${full ? `data-tok="${esc(a.mint)}"` : ''}>${a.img ? av(a.title.split(' ').pop(), a.img) : `<div class="av" style="background:${bg};font-size:16px">${ic}</div>`}
      <div class="mid"><b>${esc(a.title)}</b><span class="wrap">${esc(a.sub)} · ${tDubai(a.ts)}</span></div><div class="rt">${right}</div></div>`; }).join('') : '<div class="empty">Nothing yet.</div>';
 }
-const EMO = {F: '🌡️', SAFE: '🛡️', A: '👤', B: '🐋', C: '📈', LS: '🎯', V1: '⚡', RISK: '⚖️'};
-function agState(g, A) { const online = S.bot_alive && S.fresh && g.used, halted = g.key === 'RISK' && A.halt;
+const EMO = {F: '🌡️', SAFE: '🛡️', A: '👤', B: '🐋', C: '📈', LS: '🎯', V1: '⚡', RISK: '⚖️', M4: '🚀', COPY: '👥'};
+function agState(g, A) { const online = (A.alive != null ? A.alive : S.bot_alive && S.fresh) && g.used, halted = g.key === 'RISK' && A.halt;
   return [halted ? 'halt' : online ? 'on' : 'off', halted ? 'HALTED' : online ? 'ONLINE' : g.used ? 'OFFLINE' : 'NOT USED']; }
 function agMx(g) { return g.metrics ? g.metrics.map(([k, v]) => `<div><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join('') :
   `<div><b>${g.signals}</b><span>Signals</span></div><div><b>${g.trades}${g.open ? '+' + g.open : ''}</b><span>Trades</span></div>
@@ -523,13 +525,22 @@ function tokSheet() {
         ['Value now', pos.value_sol == null ? 'n/a' : `${f4(pos.value_sol)} SOL · ${usd(pos.value_sol, px)}`],
         ['Unrealized', pos.upnl_sol == null ? 'n/a' : `<span class="${cls(pos.upnl_sol)}">${sgn(pos.upnl_sol)} SOL · ${usdS(pos.upnl_sol, px)} · ${pct(pos.upnl_pct)}</span>`],
         ['Entry price', em ? `${fmtP(em)} SOL · ${fmtP(em * eu, '$')}` : 'n/a'], ['Price now', cur ? `${fmtP(cur)} SOL · ${fmtP(T.pu, '$')}` + (chg != null ? ` · <span class="${cls(chg)}">${pct(chg)}</span>` : '') : 'n/a']);
+      if (pos.stage) { const moon = pos.stage === 'initials_pulled', mh = moon ? pl.moonbag_max_hold_minutes : pl.max_hold_minutes, left = mh * 60 - (S.now - pos.opened);
+        rows.push(['Stage', moon ? `<span class="up">💰 Initials pulled</span> · ${f4(pos.recovered_sol)} SOL back · moonbag ${Math.round(pos.left_pct || 0)}% left` : `Full position · initials at ${pl.initials_at_x}x`]);
+        rows.push(['Stop now', pos.stop_mark ? `${fmtP(pos.stop_mark)} SOL · ${em ? pct((pos.stop_mark / em - 1) * 100) : ''}${moon ? ` · trail ${pos.trail_pct || pl.moonbag_trail_pct}% (never below entry)` : ''}` : 'n/a']);
+        if (!moon && em) rows.push(['Pull initials at', `${pl.initials_at_x}x · ${fmtP(em * pl.initials_at_x)} SOL`]);
+        if (em) rows.push(['Moonbag cap', `${pl.moonbag_cap_x}x · ${fmtP(em * pl.moonbag_cap_x)} SOL`]);
+        if (mh) rows.push(['Max hold', `${mh} min · ${left > 0 ? hold(left) + ' left' : 'due now'}`]);
+      } else {
       if (pl.stop_loss_pct != null && em) rows.push(['Stop loss', `−${pl.stop_loss_pct}% · ${fmtP(em * (1 - pl.stop_loss_pct / 100))} SOL`]);
       if (pl.take_profit_pct != null && em) rows.push(['Take profit', `+${pl.take_profit_pct}% · ${fmtP(em * (1 + pl.take_profit_pct / 100))} SOL`]);
       if (pl.max_hold_minutes) { const left = pl.max_hold_minutes * 60 - (S.now - pos.opened); rows.push(['Max hold', `${pl.max_hold_minutes} min · ${left > 0 ? hold(left) + ' left' : 'due now'}`]); }
+      }
       var bar = '';
       if (pl.stop_loss_pct != null && pl.take_profit_pct != null && (chg != null || pos.upnl_pct != null)) {
         const c = chg != null ? chg : pos.upnl_pct, lo = -pl.stop_loss_pct, hi = pl.take_profit_pct, k = Math.max(0, Math.min(1, (c - lo) / (hi - lo))), z = -lo / (hi - lo);
-        bar = `<div class="sltp"><div class="tr"><i class="zr" style="left:${z * 100}%"></i><i class="mk ${cls(c)}" style="left:${k * 100}%"></i></div><div class="lb"><span class="dn">SL −${pl.stop_loss_pct}%</span><span>entry</span><span class="up">TP +${pl.take_profit_pct}%</span></div></div>`;
+        bar = `<div class="sltp"><div class="tr"><i class="zr" style="left:${z * 100}%"></i><i class="mk ${cls(c)}" style="left:${k * 100}%"></i></div><div class="lb"><span class="dn">SL −${pl.stop_loss_pct}%</span><span>entry</span><span class="up">${pl.initials_at_x ? 'Initials ' + pl.initials_at_x + 'x' : 'TP +' + pl.take_profit_pct + '%'}</span></div></div>`;
+        if (pos.stage === 'initials_pulled') bar = '';
       }
       P = `<div class="card pos"><h4>Position <span class="mut">${esc(acName(pos.acct))}</span></h4>${bar || ''}${kv(rows)}</div>`;
     } else {
@@ -537,33 +548,40 @@ function tokSheet() {
         ['In → out', `${f4(pos.size_sol)} → ${f4(pos.sol_out)} SOL`], ['Held', `${hold(pos.hold_s)} · ${dtDubai(pos.opened)} → ${tDubai(pos.closed)}`],
         ['Entry price', em ? `${fmtP(em)} SOL · ${fmtP(em * (pos.sol_usd || px), '$')}` : 'n/a'], ['Exit price', pos.exit_mark ? `${fmtP(pos.exit_mark)} SOL` : 'n/a']);
       if (pos.peak_mark && em) rows.push(['Peak while held', `${pct((pos.peak_mark / em - 1) * 100)}`]);
-      if (pl.stop_loss_pct != null) rows.push(['SL / TP', `−${pl.stop_loss_pct}% / +${pl.take_profit_pct}%${pl.max_hold_minutes ? ' · max ' + pl.max_hold_minutes + ' min' : ''}`]);
+      if (pos.strategy === 'M4') { rows.push(['Initials', pos.initials_pulled ? '<span class="up">💰 pulled at ' + (pl.initials_at_x || 2) + 'x</span>' : 'not reached']);
+        (pos.sells || []).forEach(x => rows.push([x.kind === 'initials' ? 'Sell 1 · initials' : 'Final sell', `${Math.round(x.frac * 100)}% → ${f4(x.sol_out)} SOL · ${tDubai(x.ts)}`])); }
+      else if (pl.stop_loss_pct != null) rows.push(['SL / TP', `−${pl.stop_loss_pct}% / +${pl.take_profit_pct}%${pl.max_hold_minutes ? ' · max ' + pl.max_hold_minutes + ' min' : ''}`]);
       if (T.pn && em) rows.push(['Price now vs entry', `<span class="${cls(T.pn / em - 1)}">${pct((T.pn / em - 1) * 100)}</span>`]);
       P = `<div class="card pos"><h4>Trade <span class="mut">${esc(acName(pos.acct))}</span></h4>${kv(rows)}</div>`;
     }
   }
   const mk = T.pu != null ? `<div class="mkt"><div><b>${big(T.mc)}</b><span>Market cap</span></div><div><b>${big(T.liq)}</b><span>Liquidity</span></div><div><b class="${cls(T.m5 || 0)}">${pct(T.m5)}</b><span>5m</span></div><div><b class="${cls(T.h24 || 0)}">${pct(T.h24)}</b><span>24h</span></div></div>` : '';
   // history
-  const hist = [...ent.map(e => ({ts: e.ts, t: 'buy', e})), ...all.filter(x => x.k === 'closed').map(x => ({ts: x.closed, t: 'sell', e: x}))].sort((a, b) => b.ts - a.ts);
-  const H = hist.length ? hist.map(({t, e}) => `<div class="hi ${e.id === (pos && pos.id) ? 'cur' : ''}" ${t === 'sell' ? `data-tok="${esc(m)}" data-ref="${esc(e.id)}" data-acct="${esc(e.acct)}"` : ''}><i class="${t}">${t === 'buy' ? '↗' : '↘'}</i><div class="mid"><b>${t === 'buy' ? 'Bought' : 'Sold'} · ${esc(e.strategy_name)}</b><span>${dtDubai(t === 'buy' ? e.ts : e.closed)} · ${esc(acName(e.acct))}${t === 'sell' ? ' · ' + esc(String(e.reason).replace(/_/g, ' ')) : ''}</span></div>
+  const parts = []; for (const [an, a] of Object.entries(S.accounts)) (a.partials || []).forEach(p => p.mint === m && parts.push({...p, acct: an}));
+  const hist = [...ent.map(e => ({ts: e.ts, t: 'buy', e})), ...parts.map(e => ({ts: e.ts, t: 'part', e})), ...all.filter(x => x.k === 'closed').map(x => ({ts: x.closed, t: 'sell', e: x}))].sort((a, b) => b.ts - a.ts);
+  const H = hist.length ? hist.map(({t, e}) => t === 'part' ? `<div class="hi"><i class="sell">💰</i><div class="mid"><b>Initials pulled · ${esc(e.strategy_name)}</b><span>${dtDubai(e.ts)} · sold ${Math.round(e.frac * 100)}% · moonbag rides</span></div><div class="rt"><b class="up">${f4(e.sol_out)}</b><span class="mut">${usd(e.sol_out, e.sol_usd || px)}</span></div></div>` : `<div class="hi ${e.id === (pos && pos.id) ? 'cur' : ''}" ${t === 'sell' ? `data-tok="${esc(m)}" data-ref="${esc(e.id)}" data-acct="${esc(e.acct)}"` : ''}><i class="${t}">${t === 'buy' ? '↗' : '↘'}</i><div class="mid"><b>${t === 'buy' ? 'Bought' : 'Sold'} · ${esc(e.strategy_name)}</b><span>${dtDubai(t === 'buy' ? e.ts : e.closed)} · ${esc(acName(e.acct))}${t === 'sell' ? ' · ' + esc(String(e.reason).replace(/_/g, ' ')) : ''}</span></div>
      <div class="rt">${t === 'buy' ? `<b>${f4(e.size_sol)} SOL</b><span class="mut">${usd(e.size_sol, e.sol_usd || px)}</span>` : `<b class="${cls(e.pnl_sol)}">${sgn(e.pnl_sol)}</b><span class="${cls(e.pnl_sol)}">${pct(e.pnl_pct)}</span>`}</div></div>`).join('') : '<div class="empty">No trades in this token yet.</div>';
   $('#sBody').innerHTML = `${mk}${P}
     <div class="links"><a class="sbtn" href="https://dexscreener.com/solana/${esc(pair || m)}" target="_blank" rel="noopener">DexScreener ↗</a><a class="sbtn" href="https://pump.fun/coin/${esc(m)}" target="_blank" rel="noopener">pump.fun ↗</a><a class="sbtn" href="https://solscan.io/token/${esc(m)}" target="_blank" rel="noopener">Solscan ↗</a></div>
     <h4 class="sh4">Trade history <span class="mut">${hist.length}</span></h4>${H}
     <p class="note">Paper trades only. Prices: DexScreener (now) and the bot's Jupiter quotes (entry/exit).</p>`;
 }
-const acName = a => ({REVISED: 'Latest rules', ORIGINAL: 'Original', V1_SNIPER: 'V1 sniper'}[a] || a);
+const acName = a => ({REVISED: 'Latest rules', ORIGINAL: 'Original', V1_SNIPER: 'V1 sniper', M4: 'M4 Momentum'}[a] || a);
+const m4Plan = pl => [['Stop loss', '−' + pl.stop_loss_pct + '% on the whole position'], ['Pull initials', `at ${pl.initials_at_x}x: sell enough to get the SOL + fees back`],
+  ['Moonbag trail', `${pl.moonbag_trail_pct}% below its high, never below entry`], ['Moonbag cap', `sell all at ${pl.moonbag_cap_x}x`],
+  ['Max hold', `${pl.max_hold_minutes} min before initials · ${pl.moonbag_max_hold_minutes} min moonbag`], ['Exit if liquidity drops', pl.liq_drop_exit_pct + '%']];
 const kv = rows => `<div class="kv">${rows.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}</div>`;
 const RULE = {F: 'Market check', SAFE: 'Safety gate', RISK: 'Sizing & limits', A: 'Copy one wallet (A)', B: 'Multi-whale (B)', C: 'Momentum (C)', LS: 'Launch sniper (LS)', V1: null};
 function agentSheet() {
   setChart(null); const A = S.accounts[SH.acct] || S.accounts[ACCT], px = S.sol_usd, g = A.agents.find(x => x.key === SH.agent); if (!g) return closeSheet();
   const [stc, stt] = agState(g, A);
   $('#sHead').innerHTML = `<div class="th"><div class="av lg ic2">${EMO[g.key] || '•'}</div><div class="mid"><b>${esc(g.title)}</b><span class="wrap">${esc(g.desc)}</span></div><span class="st ${stc}"><i></i>${stt}</span></div>`;
-  const pl = (A.plans || {})[g.key], tr = ['A', 'B', 'C', 'LS', 'V1'].includes(g.key);
-  const plan = pl && pl.take_profit_pct != null ? `<div class="card pos"><h4>Exit plan <span class="mut">${esc(acName(SH.acct))}</span></h4>${kv([['Take profit', '+' + pl.take_profit_pct + '%'], ['Stop loss', '−' + pl.stop_loss_pct + '%'],
+  const pl = (A.plans || {})[g.key], tr = ['A', 'B', 'C', 'LS', 'V1', 'M4'].includes(g.key);
+  const plan = pl && pl.initials_at_x ? `<div class="card pos"><h4>Exit plan <span class="mut">${esc(acName(SH.acct))}</span></h4>${kv(m4Plan(pl))}</div>` : pl && pl.take_profit_pct != null ? `<div class="card pos"><h4>Exit plan <span class="mut">${esc(acName(SH.acct))}</span></h4>${kv([['Take profit', '+' + pl.take_profit_pct + '%'], ['Stop loss', '−' + pl.stop_loss_pct + '%'],
     ...(pl.trailing_stop_pct != null ? [['Trailing stop', `${pl.trailing_stop_pct}% after +${pl.trailing_activate_pct}%`]] : []), ...(pl.breakeven_at_pct ? [['Break-even stop at', '+' + pl.breakeven_at_pct + '%']] : []),
     ...(pl.max_hold_minutes ? [['Max hold', pl.max_hold_minutes + ' min']] : []), ...(pl.liq_drop_exit_pct ? [['Exit if liquidity drops', pl.liq_drop_exit_pct + '%']] : [])])}</div>` : '';
-  const rs = (S.rules || []).filter(r => r.title === RULE[g.key] || (g.key === 'A' && r.title === 'Copied wallets'));
+  const RK = SH.acct === 'M4' ? {M4: 'M4 Momentum', COPY: 'M4 copy-wallet boost', SAFE: 'M4 anti-rug checks', RISK: 'M4 Momentum'}[g.key] : RULE[g.key];
+  const rs = (S.rules || []).filter(r => r.title === RK || ((g.key === 'A' || (SH.acct === 'M4' && g.key === 'COPY')) && r.title === 'Copied wallets'));
   const rules = rs.length ? rs.map(r => `<div class="card rule"><h4>${esc(r.title)}</h4>${r.lines.map(l => `<p>${esc(l)}</p>`).join('')}</div>`).join('') :
     g.key === 'V1' ? `<div class="card rule"><h4>V1 sniper (your first rules)</h4><p>Buys new pump.fun tokens from the scanner with looser checks and no market gate, up to 15% of balance (max 0.15 SOL), 3 at a time.</p></div>` : '';
   const ho = tr ? A.holdings.filter(h => h.strategy === g.key) : [], cl = tr ? A.closes.filter(x => x.strategy === g.key) : [];
@@ -615,19 +633,20 @@ $('#rfBtn').onclick = e => { e.stopPropagation(); doRefresh('button'); };
 
 // ---------- trade alerts ----------
 function notify() {
-  const A = S.accounts[ACCT]; const ev = [...A.entries.map(e => ({...e, k: 'buy'})), ...A.closes.map(c => ({...c, k: 'sell', ts: c.closed}))];
+  const A = S.accounts[ACCT]; const ev = [...A.entries.map(e => ({...e, k: 'buy'})), ...(A.partials || []).map(p => ({...p, k: 'partial'})), ...A.closes.map(c => ({...c, k: 'sell', ts: c.closed}))];
   if (seen === null) { seen = new Set(ev.map(e => e.id)); return; }
   ev.filter(e => !seen.has(e.id)).sort((a, b) => a.ts - b.ts).forEach((e, i) => { seen.add(e.id); setTimeout(() => toast(e), i * 900); });
 }
 function toast(e) {
   const px = S.sol_usd, d = document.createElement('div'); d.className = 'toast';
-  if (e.k === 'buy') d.innerHTML = `${av(e.symbol, e.img)}<div class="mid"><b>Bought ${esc(e.symbol)}</b><span>${esc(e.strategy_name)} · ${f4(e.size_sol)} SOL · ${usd(e.size_sol, px)}</span></div><div class="rt"><b style="color:var(--p)">BUY</b><span class="mut">${tDubai(e.ts)}</span></div>`;
+  if (e.k === 'partial') d.innerHTML = `${av(e.symbol, e.img)}<div class="mid"><b>💰 Initials pulled · ${esc(e.symbol)}</b><span>${esc(e.strategy_name)} · sold ${Math.round(e.frac * 100)}% for ${f4(e.sol_out)} SOL · moonbag rides</span></div><div class="rt"><b class="up">${f4(e.sol_out)}</b><span class="up">SOL · ${usd(e.sol_out, e.sol_usd || px)}</span></div>`;
+  else if (e.k === 'buy') d.innerHTML = `${av(e.symbol, e.img)}<div class="mid"><b>Bought ${esc(e.symbol)}</b><span>${esc(e.strategy_name)} · ${f4(e.size_sol)} SOL · ${usd(e.size_sol, px)}</span></div><div class="rt"><b style="color:var(--p)">BUY</b><span class="mut">${tDubai(e.ts)}</span></div>`;
   else d.innerHTML = `${av(e.symbol, e.img)}<div class="mid"><b>Sold ${esc(e.symbol)} · held ${hold(e.hold_s)}</b><span>${esc(e.strategy_name)} · ${f4(e.size_sol)} SOL in · ${esc(e.reason.replace(/_/g, ' '))}</span></div>
      <div class="rt"><div class="big ${cls(e.pnl_sol)}">${sgn(e.pnl_sol)}</div><span class="${cls(e.pnl_sol)}">SOL · ${usdS(e.pnl_sol, e.sol_usd || px)} · ${e.pnl_pct >= 0 ? '+' : ''}${e.pnl_pct.toFixed(1)}%</span></div>`;
   $('#toasts').prepend(d); tick();
-  if (e.k === 'sell' && e.pnl_sol > 0) confetti();
+  if ((e.k === 'sell' && e.pnl_sol > 0) || e.k === 'partial') confetti();
   const out = () => { d.classList.add('out'); setTimeout(() => d.remove(), 400); };
-  d.onclick = () => { out(); openToken(e.mint, e.k === 'sell' ? e.id : null); };
+  d.onclick = () => { out(); openToken(e.mint, e.k === 'sell' ? e.id : null, e.k === 'partial' ? 'M4' : null); };
   setTimeout(out, 6500);
 }
 function confetti() {
