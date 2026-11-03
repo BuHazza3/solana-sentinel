@@ -236,7 +236,7 @@ html.lock,html.lock body{overflow:hidden}
   <section class="pane" id="p-trades"><h3>Bonding curve vs graduated</h3><div id="split"></div><h3>Trades <span id="tSum"></span></h3><div class="seg" id="tSeg" style="margin-top:6px"><button data-r="all" class="on">All</button><button data-r="open">Open</button><button data-r="win">Wins</button><button data-r="loss">Losses</button><button data-r="best">Best</button></div><div class="chips" id="tAg"></div><div id="allTrades"></div></section>
   <section class="pane" id="p-activity"><h3>Activity</h3><div class="seg" id="actSeg" style="margin-top:6px"><button data-f="all" class="on">All</button><button data-f="trade">Trades</button><button data-f="copy">Copy signals</button><button data-f="skip">Skipped</button></div><div id="act"></div></section>
   <section class="pane" id="p-agents"><h3>Agents</h3><div id="agents"></div><h3>Followed wallets <span class="mut" style="font-size:12px;font-weight:500" id="wN"></span></h3><div id="wallets"></div></section>
-  <section class="pane" id="p-rules"><h3>Current rules <span class="mut" style="font-size:12px;font-weight:500">V1 &amp; S5</span></h3><div id="rules"></div></section>
+  <section class="pane" id="p-rules"><h3>Current rules <span class="mut" style="font-size:12px;font-weight:500">V1, S5 &amp; S6</span></h3><div id="rules"></div></section>
   <div class="foot" id="foot"></div>
 </div>
 
@@ -251,11 +251,11 @@ html.lock,html.lock body{overflow:hidden}
 <script>
 // ===== UI (shared by the GitHub Pages app and the local app). READ-ONLY: no trade, wallet or deposit actions. =====
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
-let S = null, ACCT = ['V1', 'S5'].includes(localStorage.getItem('sentinel_acct')) ? localStorage.getItem('sentinel_acct') : 'V1', RANGE = 0, AF = 'all', TF = 'all', TA = 'all', seen = null, shown = {bal: null};
+let S = null, ACCT = ['V1', 'S5', 'S6'].includes(localStorage.getItem('sentinel_acct')) ? localStorage.getItem('sentinel_acct') : 'V1', RANGE = 0, AF = 'all', TF = 'all', TA = 'all', seen = null, shown = {bal: null};
 let first = true, lastMsg = 0;
-const ACCTS = [['V1', 'V1 Sniper'], ['S5', 'S5 Quant']];
+const ACCTS = [['V1', 'V1 Sniper'], ['S5', 'S5 Quant'], ['S6', 'S6 Combo']];
 // service worker: app shell cache; when a new version takes over, reload once so the new app shows
-const APP_VERSION = 'v7';
+const APP_VERSION = 'v8';
 // ---------- updates: new versions show up on the next open/return to the app ----------
 let swReg = null, reloading = false;
 function hardReload(v) {
@@ -468,7 +468,7 @@ function renderAct() {
     return `<div class="item ${full ? 'tap' : ''}" ${full ? `data-tok="${esc(a.mint)}"` : ''}>${a.img ? av(a.title.split(' ').pop(), a.img) : `<div class="av" style="background:${bg};font-size:16px">${ic}</div>`}
      <div class="mid"><b>${esc(a.title)}</b><span class="wrap">${esc(a.sub)} · ${tDubai(a.ts)}</span></div><div class="rt">${right}</div></div>`; }).join('') : '<div class="empty">Nothing yet.</div>';
 }
-const EMO = {RISK: '⚖️', V1_SNIPE: '⚡', V1_SCANNER: '🔎', COPY: '👥', C_GRAD: '📈', LS: '🎯', M4_SCAN: '🚀', REVIVAL: '🧪'};
+const EMO = {RISK: '⚖️', V1_SNIPE: '⚡', V1_SCANNER: '🔎', COPY: '👥', C_GRAD: '📈', LS: '🎯', M4_SCAN: '🚀', REVIVAL: '🧪', S6_COPY: '👥', S6_CONFL: '🤝', S6_CONFIRM: '⏱️', S6_CGRAD: '📈'};
 function agState(g, A) { const online = (A.alive != null ? A.alive : S.bot_alive && S.fresh) && g.used, halted = g.key === 'RISK' && A.halt;
   if (online && g.toggle && !g.effective) return ['off', g.on ? 'BOT OFF' : 'SWITCHED OFF'];
   return [halted ? 'halt' : online ? 'on' : 'off', halted ? 'HALTED' : online ? 'ONLINE' : g.used ? 'OFFLINE' : 'NOT USED']; }
@@ -496,7 +496,7 @@ function agMx(g) { return g.metrics ? g.metrics.map(([k, v]) => `<div><b>${esc(v
 function renderAgents() {
   const A = S.accounts[ACCT], SA = A.subagents || [], tp = SA.reduce((s, x) => s + x.pnl_sol, 0);
   const ch = S.switch_channel || {}, can = typeof sendCmd === 'function';
-  const master = `<div class="card"><div class="mst"><div class="av" style="background:var(--pd)">${ACCT === 'S5' ? '🧪' : '⚡'}</div><div class="mid"><b>${esc(A.title || ACCT)} bot</b>
+  const master = `<div class="card"><div class="mst"><div class="av" style="background:var(--pd)">${ACCT === 'S5' ? '🧪' : ACCT === 'S6' ? '🧩' : '⚡'}</div><div class="mid"><b>${esc(A.title || ACCT)} bot</b>
      <span class="wrap">${A.master === false ? 'Bot switched OFF: no new entries, open positions still exit normally' : 'Bot ON · sub-agents below can be switched one by one'}</span></div>${swBtn(ACCT, '_master')}</div>
      <div class="pl"><span class="h">SUB-AGENT (THIS RUN)</span><span class="h">TRADES</span><span class="h">WIN</span><span class="h">P/L SOL</span>
      ${SA.map(x => `<b>${EMO[x.key] || '•'} ${esc(x.title)}${x.on ? '' : ' <span class="mut">(off)</span>'}</b><span>${x.trades}${x.open ? '+' + x.open : ''}</span><span>${x.win_rate == null ? '–' : Math.round(x.win_rate) + '%'}</span><b class="${x.trades ? cls(x.pnl_sol) : 'mut'}">${x.trades ? sgn(x.pnl_sol, 4) : '0'}</b>`).join('')}
@@ -607,7 +607,7 @@ function tokSheet() {
     <h4 class="sh4">Trade history <span class="mut">${hist.length}</span></h4>${H}
     <p class="note">Paper trades only. Prices: DexScreener (now) and the bot's Jupiter quotes (entry/exit).</p>`;
 }
-const acName = a => ({V1: 'V1 Sniper', S5: 'S5 Quant'}[a] || a);
+const acName = a => ({V1: 'V1 Sniper', S5: 'S5 Quant', S6: 'S6 Combo'}[a] || a);
 const m4Plan = pl => [['Stop loss', '−' + pl.stop_loss_pct + '% on the whole position'], ['Pull initials', `at ${pl.initials_at_x}x: sell enough to get the SOL + fees back`],
   ['Moonbag trail', `${pl.moonbag_trail_pct}% below its high, never below entry`], ['Moonbag cap', `sell all at ${pl.moonbag_cap_x}x`],
   ['Max hold', `${pl.max_hold_minutes} min before initials · ${pl.moonbag_max_hold_minutes} min moonbag`], ['Exit if liquidity drops', pl.liq_drop_exit_pct + '%']];

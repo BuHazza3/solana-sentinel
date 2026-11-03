@@ -86,3 +86,62 @@ kind = "revival"
 fees = "snipe"
 entry = { min_age_minutes = 30, quiet_window_minutes = 15, quiet_max_volume_sol = 1.0, wake_min_sol = 4.0, max_price_vs_peak = 0.5, scan_list_pages = 2, scan_interval_seconds = 15, recheck_seconds = 60 }
 exit = { engine = "card", stop_loss_pct = 15, take_profits = [[1.5, 0.5], [2.5, 1.0]], trail_pct = 20, max_hold_minutes = 90, price_lost_seconds = 180 }
+
+# ---------------------------------------------------------------- S6 COMBO (s6_bot.toml). PAPER ONLY. pump.fun tokens only, entries capped at $1M market cap.
+# Exits = AK's rule on the S6 card: sell ~55% (the initial stake + costs) at 2x, let the rest run with a 30% trailing stop and sell
+# it all at 5x; before 2x a -15% stop, a protective 12% trailing stop once the token is up 25%, and a 30-min time limit (moonbag: 120 min).
+# Evidence + replay backtest: /workspace/s6/analysis (S6_REPORT.md). Thin samples; treat every S6 agent as an experiment.
+[agent.S6_COPY]
+origin = "COPY (V1) · the only agent with a positive live paper result"
+title = "S6 copy-trade"
+kind = "v1"
+signal = "copy"
+fees = "snipe"
+exit_when_leader_sells = true          # only before the first take-profit; the moonbag rides
+exclude_wallets = ["slingoor"]         # replay: 26 of 49 copy signals, -0.32 SOL (in- and out-of-sample negative)
+max_mcap_usd = 1000000
+min_mcap_usd = 15000
+exit = { engine = "card", stop_loss_pct = 15, take_profits = [[2.0, 0.55], [5.0, 1.0]], trail_pct = 12, trail_arm_x = 1.25, trail_after_tp_pct = 30, max_hold_minutes = 30, max_hold_after_tp_minutes = 120, price_lost_seconds = 180 }
+[agent.S6_CGRAD]
+origin = "C_GRAD (ORIGINAL + REVISED) · small positive result (+0.005 SOL, 5 trades)"
+title = "S6 graduated momentum"
+kind = "c"
+fees = "normal"
+use_regime_gate = true
+max_rug_score = 20
+min_rr = 2.0
+min_liquidity_usd = 30000
+min_age_minutes = 30
+min_vol_liq_h1 = 0.5
+min_buy_sell_ratio_h1 = 1.15
+max_h1_pct = 150
+min_score = 0.6
+max_mcap_usd = 1000000
+min_mcap_usd = 0
+crit = { min_lp_locked_pct = 90, max_top10_pct = 30, max_single_pct = 10, max_round_trip_loss_pct = 10, veto_clmm_only = true, max_dev_hold_pct = 10, max_bundle_pct = 20, serial_launcher_coins = 20 }
+regime = { sol_h1_min_pct = -1.5, sol_h6_min_pct = -3.0, sol_h24_min_pct = -6.0, emergency_exit_h1_pct = -3.0 }
+exit = { engine = "card", stop_loss_pct = 25, take_profits = [[2.0, 0.55], [5.0, 1.0]], trail_pct = 30, max_hold_minutes = 60, max_hold_after_tp_minutes = 120, price_lost_seconds = 180 }
+[agent.S6_CONFL]
+origin = "NEW · smart-wallet confluence"
+title = "S6 wallet confluence"
+kind = "v1"
+signal = "confluence"
+fees = "snipe"
+exit_when_leader_sells = true
+min_wallets = 2                        # distinct watched wallets that bought the same token ...
+window_minutes = 60                    # ... within this window (all watched wallets count, slingoor included)
+max_mcap_usd = 1000000
+min_mcap_usd = 15000
+exit = { engine = "card", stop_loss_pct = 15, take_profits = [[2.0, 0.55], [5.0, 1.0]], trail_pct = 12, trail_arm_x = 1.25, trail_after_tp_pct = 30, max_hold_minutes = 30, max_hold_after_tp_minutes = 120, price_lost_seconds = 180 }
+[agent.S6_CONFIRM]
+origin = "NEW · copy-trade with a 3-minute price confirmation"
+title = "S6 confirmed copy"
+kind = "v1"
+signal = "copy_confirmed"
+fees = "snipe"
+confirm_seconds = 180                  # after a watched wallet buys, wait 3 min ...
+confirm_min_x = 1.05                   # ... and only buy if the price is +5% ...
+confirm_max_x = 1.5                    # ... to +50% vs the price when the wallet bought (not dumped, not already vertical)
+max_mcap_usd = 1000000
+min_mcap_usd = 15000
+exit = { engine = "card", stop_loss_pct = 15, take_profits = [[2.0, 0.55], [5.0, 1.0]], trail_pct = 12, trail_arm_x = 1.25, trail_after_tp_pct = 30, max_hold_minutes = 30, max_hold_after_tp_minutes = 120, price_lost_seconds = 180 }

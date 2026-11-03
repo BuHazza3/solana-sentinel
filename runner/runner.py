@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """24/7 orchestrator for the PAPER-ONLY pump.fun bots on GitHub Actions (no wallets, no keys, no real transactions).
 
-One job = restore encrypted state -> run server + relay publisher + the two multi-agent paper bots (agent_bot.py --bot V1,
-agent_bot.py --bot S5; each sub-agent has an on/off switch) headless on localhost -> save state every SAVE_EVERY s ->
+One job = restore encrypted state -> run server + relay publisher + the three multi-agent paper bots (agent_bot.py --bot V1,
+--bot S5, --bot S6; each sub-agent has an on/off switch) headless on localhost -> save state every SAVE_EVERY s ->
 at RUN_SECONDS: SIGTERM bots (they persist open positions and switches), final save, dispatch the next run.
 The relay publisher also receives the app's authenticated on/off commands (toggle_cmd.py) and writes bot/data/agent_toggles.json,
 which is part of the saved state, so switches survive handovers. Job stdout is deliberately minimal (public logs); child output goes to files in the work dir.
@@ -214,8 +214,9 @@ def main():
     relay = Proc("relay", [py, "relay_publisher.py"], APP)
     v1 = Proc("v1_bot", [py, "agent_bot.py", "--bot", "V1"], BOT)
     s5 = Proc("s5_bot", [py, "agent_bot.py", "--bot", "S5"], BOT)
-    bots = (v1, s5)
-    procs = [server, v1, s5, relay]
+    s6 = Proc("s6_bot", [py, "agent_bot.py", "--bot", "S6"], BOT)
+    bots = (v1, s5, s6)
+    procs = [server, v1, s5, s6, relay]
 
     def on_signal(sig, _):
         STOP["why"] = f"signal {sig}"

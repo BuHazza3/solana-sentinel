@@ -75,7 +75,7 @@ def m4_after_initials(p, X):
 
 
 def card_of(X):
-    return dict(stop_pct=X["stop_loss_pct"], tp=[tuple(x) for x in X["take_profits"]], trail_pct=X["trail_pct"], trail_arm_x=None,
+    return dict(stop_pct=X["stop_loss_pct"], tp=[tuple(x) for x in X["take_profits"]], trail_pct=X["trail_pct"], trail_arm_x=X.get("trail_arm_x"), trail_after_tp_pct=X.get("trail_after_tp_pct"), timeout_after_tp_min=X.get("max_hold_after_tp_minutes"),
                 timeout_min=X["max_hold_minutes"], close_below_entry=False, exit_on_graduation=False, exit_after_grad_min=None)
 
 
@@ -90,7 +90,7 @@ def card(p, X, now, mark, phase):
             out.append(("final", why) if e.closed else ("partial", frac, why))
     elif now - p["last_ok"] > X["price_lost_seconds"]:
         e.closed = True; out.append(("final", "price_data_lost"))
-    elif now - p["opened"] >= X["max_hold_minutes"] * 60:
+    elif now - p["opened"] >= ((X.get("max_hold_after_tp_minutes") if e.tp_done else None) or X["max_hold_minutes"]) * 60:
         e.closed = True; out.append(("final", "time_exit"))
     p["engine_next"] = e.state()
     p["stop_mark"] = e._stop_px()
@@ -105,5 +105,5 @@ def plan(X):
                                   "moonbag_max_hold_minutes", "liq_drop_exit_pct")} | {"take_profit_pct": round((X["initials_at_x"] - 1) * 100)}
     if X["engine"] == "card":
         return {"stop_loss_pct": X["stop_loss_pct"], "take_profit_pct": round((X["take_profits"][0][0] - 1) * 100), "take_profits": X["take_profits"],
-                "trailing_stop_pct": X["trail_pct"], "trailing_activate_pct": round((X["take_profits"][0][0] - 1) * 100), "max_hold_minutes": X["max_hold_minutes"]}
+                "trailing_stop_pct": X["trail_pct"], "trailing_activate_pct": round(((X.get("trail_arm_x") or X["take_profits"][0][0]) - 1) * 100), "max_hold_minutes": X["max_hold_minutes"]}
     return {k: X[k] for k in ("take_profit_pct", "stop_loss_pct", "breakeven_at_pct", "trailing_activate_pct", "trailing_stop_pct", "max_hold_minutes", "liq_drop_exit_pct") if k in X}

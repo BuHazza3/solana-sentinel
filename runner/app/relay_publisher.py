@@ -40,6 +40,41 @@ def seal(state):
     return b"S1" + iv + AES.encrypt(iv, gzip.compress(json.dumps(state, separators=(",", ":")).encode(), 6), b"sentinel")
 
 
+MQTT_MAX = int(os.environ.get("MQTT_MAX_BYTES", "60000"))   # shiftr.io drops/disconnects on messages over ~64 KiB
+
+
+def _thin(series, n):
+    if len(series) <= n:
+        return series
+    step = len(series) / n
+    return [series[int(i * step)] for i in range(n - 1)] + [series[-1]]
+
+
+def fit_mqtt(s):
+    """Sealed payload for MQTT that fits the broker's message limit. The full state grew past 64 KiB on 2 Nov ~23:40 (Dubai),
+    after which the broker kept dropping the publisher (app stuck on a stale snapshot, switches not received). Trims only
+    display history (oldest closes/entries/activity, chart resolution, v6 compatibility copies); totals/stats are server-computed
+    and unchanged. ntfy (fallback) still gets the full state."""
+    blob = seal(s)
+    if len(blob) <= MQTT_MAX:
+        return blob, 0
+    t = dict(s, accounts={k: v for k, v in (s.get("accounts") or {}).items() if not (v or {}).get("retired") and k != "V1_SNIPER"})
+    for lvl, (ser, lst, act) in enumerate(((400, 60, 80), (240, 30, 40), (120, 15, 20), (60, 8, 10)), 1):
+        acc = {}
+        for k, a in t["accounts"].items():
+            a = dict(a, series=_thin(a.get("series") or [], ser), closes=(a.get("closes") or [])[:lst], entries=(a.get("entries") or [])[:lst],
+                     partials=(a.get("partials") or [])[:lst], activity=(a.get("activity") or [])[:act], trimmed=True)
+            acc[k] = a
+        u = dict(t, accounts=acc)
+        keep = {x.get("mint") for a in acc.values() for key in ("holdings", "closes", "entries", "partials") for x in a.get(key) or []}
+        if isinstance(u.get("tokens"), dict):
+            u["tokens"] = {m: v for m, v in u["tokens"].items() if m in keep}
+        blob = seal(u)
+        if len(blob) <= MQTT_MAX:
+            return blob, lvl
+    return blob, 9
+
+
 def trade_sig(s):
     return json.dumps({k: [len(a.get("entries", [])), len(a.get("closes", [])), [h.get("id") for h in a.get("holdings", [])], a.get("halt"), a.get("switches")]
                        for k, a in (s.get("accounts") or {}).items()}, sort_keys=True)
@@ -74,7 +109,7 @@ def main():
     c.on_message = on_message
     c.on_disconnect = lambda cl, u, f, rc, p=None: (connected.__setitem__("ok", False), CMDS.__setitem__("subscribed", False), log(f"mqtt disconnected rc={rc}"))
     c.connect_async(BROKER, PORT, keepalive=30); c.loop_start()
-    last_pub, last_sig, last_ntfy, n_pub, n_ntfy, errs = 0.0, None, 0.0, 0, 0, 0
+    last_pub, last_sig, last_ntfy, n_pub, n_ntfy, errs, last_trim = 0.0, None, 0.0, 0, 0, 0, None
     sess = requests.Session()
     log(f"publisher up, commands on, ntfy every {NTFY_EVERY}s")
     while True:
@@ -89,7 +124,9 @@ def main():
             sig = trade_sig(s)
             due = (sig != last_sig and t - last_pub >= MIN_GAP) or t - last_pub >= HEARTBEAT or CMDS["force"]
             if due and connected["ok"]:
-                blob = seal(s)
+                blob, trim = fit_mqtt(s)
+                if trim != last_trim:
+                    log(f"mqtt payload {len(blob)} bytes (trim level {trim})"); last_trim = trim
                 r = c.publish(TOPIC, blob, qos=1, retain=True)
                 if r.rc == mqtt.MQTT_ERR_SUCCESS:
                     last_pub, last_sig, n_pub = t, sig, n_pub + 1

@@ -123,18 +123,23 @@ class Position:
         self.grad_ts = opened if phase == "graduated" else None
         self.trail_armed = card.get("trail_arm_x") is not None and card.get("trail_pct") and entry_px * card["trail_arm_x"] <= entry_px
 
+    def _trail(self):
+        """Trailing-stop % in force: optional wider trail for what is left after the first take-profit (S6 moonbag)."""
+        c = self.card
+        return c["trail_after_tp_pct"] if self.tp_done and c.get("trail_after_tp_pct") else c.get("trail_pct")
+
     def _stop_px(self):
         c = self.card
         s = self.entry * (1 - c["stop_pct"] / 100) if c.get("stop_pct") else None
         if self.trail_armed and c.get("trail_pct"):
-            t = self.peak * (1 - c["trail_pct"] / 100)
+            t = self.peak * (1 - self._trail() / 100)
             s = t if s is None else max(s, t)
         return s
 
     def _stop_reason(self):
         c = self.card
         if self.trail_armed and c.get("trail_pct"):
-            t = self.peak * (1 - c["trail_pct"] / 100)
+            t = self.peak * (1 - self._trail() / 100)
             if not c.get("stop_pct") or t >= self.entry * (1 - c["stop_pct"] / 100):
                 return "trailing_stop"
         return "stop_loss"
@@ -158,8 +163,9 @@ class Position:
             px = o if o <= sp else (sp if c >= sp else c)
             return self._close(px, self._stop_reason())
         # 2. time rules (evaluated at the candle's open)
-        if C.get("timeout_min") and ts - self.opened >= C["timeout_min"] * 60:
-            return self._close(o, "time_exit")
+        tmo = C["timeout_after_tp_min"] if self.tp_done and C.get("timeout_after_tp_min") else C.get("timeout_min")
+        if tmo and ts - self.opened >= tmo * 60:
+            return self._close(o, "moonbag_time_exit" if tmo != C.get("timeout_min") else "time_exit")
         if C.get("exit_after_grad_min") is not None and self.grad_ts is not None and ts - self.grad_ts >= C["exit_after_grad_min"] * 60:
             return self._close(o, "time_after_graduation")
         acts = []
@@ -182,7 +188,7 @@ class Position:
         self.peak = max(self.peak, h)
         if C.get("trail_pct") and C.get("trail_arm_x") is not None and self.peak >= self.entry * C["trail_arm_x"]:
             self.trail_armed = True
-        if self.trail_armed and C.get("trail_pct") and c <= self.peak * (1 - C["trail_pct"] / 100) and not acts:
+        if self.trail_armed and C.get("trail_pct") and c <= self.peak * (1 - self._trail() / 100) and not acts:
             return self._close(c, "trailing_stop")
         if C.get("close_below_entry") and c < self.entry:
             return acts + self._close(c, "close_below_entry")

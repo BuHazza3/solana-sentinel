@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """MULTI-AGENT PAPER BOT (PAPER ONLY: no wallet, no keys, no transactions). One process per bot:
-  python3 agent_bot.py --bot V1     (v1_bot.toml)     python3 agent_bot.py --bot S5     (s5_bot.toml)
+  python3 agent_bot.py --bot V1     (v1_bot.toml)     python3 agent_bot.py --bot S5     (s5_bot.toml)     python3 agent_bot.py --bot S6     (s6_bot.toml)
 Each bot has ONE 1 SOL paper bankroll shared by its sub-agents (agents.toml). Every sub-agent keeps its own entry logic and
 its own exits from the bot it came from (V1_SNIPER, ORIGINAL/REVISED, M4, S5); the host applies the bot's sizing and limits.
 Switches (data/agent_toggles.json, written only by the app's authenticated command channel): off = no new entries for that
@@ -16,7 +16,7 @@ import agent_exits as EXI
 import agent_toggles
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--bot", required=True, choices=["V1", "S5"])
+ap.add_argument("--bot", required=True, choices=["V1", "S5", "S6"])
 ap.add_argument("--new-run", action="store_true")
 args = ap.parse_args()
 BOT = args.bot
@@ -368,8 +368,8 @@ def sig_v1(c):
     return None
 
 
-def sig_c_grad(c):
-    S, p, pr = AG["C_GRAD"], c["parts"], c["pair"]
+def sig_c_grad(c, key="C_GRAD"):
+    S, p, pr = AG[key], c["parts"], c["pair"]
     if c["phase"] != "graduated":
         return False
     tx = pr.get("txns") or {}
@@ -383,6 +383,18 @@ def sig_ls(c):
     ls, p, prog = AG["LS"], c["parts"], c.get("progress")
     return (c["phase"] == "bonding" and c["age"] is not None and c["age"] <= ls["max_age_minutes"] and prog is not None
             and ls["min_progress_pct"] <= prog <= ls["max_progress_pct"] and p["b5"] >= ls["min_buys_5m"] and p["b5"] >= ls["min_buy_sell_ratio"] * max(1, p["s5"]))
+
+
+def mcap_usd(c):
+    """Market cap in USD: DexScreener marketCap/fdv, else pump.fun's 1B supply x price."""
+    pr = c.get("pair") or {}
+    for k in ("marketCap", "fdv"):
+        v = pr.get(k)
+        if isinstance(v, (int, float)) and v > 0:
+            return float(v)
+    if c.get("mark_sol") and MKT["sol_usd"]:
+        return c["mark_sol"] * 1e9 * MKT["sol_usd"]
+    return None
 
 
 def classic_enter(agent, c, meta):
@@ -399,6 +411,14 @@ def classic_enter(agent, c, meta):
     if liq < min_liq: R.append(f"liquidity_below_min({liq:.0f}<{min_liq})")
     if time.time() - c["pair_ts"] > 90: R.append("stale_market_data")
     if report is None and kind != "v1": R.append("security_data_unavailable")
+    mc = None
+    if "max_mcap_usd" in S or "min_mcap_usd" in S:        # S6 agents only: pump.fun market-cap band (V1/S5 agents have no such keys)
+        mc = mcap_usd(c)
+        hi = min(S.get("max_mcap_usd", 1e18), RK.get("max_mcap_usd", 1e18))
+        if mc is None: R.append("mcap_unknown")
+        elif mc > hi: R.append(f"mcap_above_cap(${mc:,.0f}>${hi:,.0f})")
+        elif mc < S.get("min_mcap_usd", 0): R.append(f"mcap_below_min(${mc:,.0f}<${S['min_mcap_usd']:,.0f})")
+        meta = dict(meta, mcap_usd=mc and round(mc))
     if R:
         record(agent, c["mint"], c["symbol"], c["phase"], False, R, {"stage": "pre", **meta}); return
     score, comp = None, None
@@ -430,7 +450,8 @@ def classic_enter(agent, c, meta):
         R.append("no_sell_route")
     rr = None
     if kind == "c" and cost is not None:
-        rr = (X["take_profit_pct"] - cost) / (X["stop_loss_pct"] + cost)
+        tp_pct = X["take_profit_pct"] if "take_profit_pct" in X else (X["take_profits"][0][0] - 1) * 100
+        rr = (tp_pct - cost) / (X["stop_loss_pct"] + cost)
         if rr < S["min_rr"]: R.append(f"rr_after_costs({rr:.2f}<{S['min_rr']})")
     dec = ((report or {}).get("token") or {}).get("decimals")
     if dec is None and not R: R.append("no_decimals")
@@ -448,7 +469,7 @@ def dex_loop():
         t0 = time.time()
         try:
             update_sol()
-            want = [a for a in ("V1_SNIPE", "V1_SCANNER", "C_GRAD", "LS") if enabled(a)]
+            want = [a for a in ("V1_SNIPE", "V1_SCANNER", "C_GRAD", "LS", "S6_CGRAD") if enabled(a)]
             if want:
                 found = {}
                 for m, (tag, coin) in pumpfun.discover().items():
@@ -472,6 +493,7 @@ def dex_loop():
                     if v == "scanner" and enabled("V1_SCANNER"): classic_enter("V1_SCANNER", c, dict(meta, signal="scanner"))
                     if enabled("C_GRAD") and sig_c_grad(c): classic_enter("C_GRAD", c, dict(meta, signal="momentum_confirmation"))
                     if enabled("LS") and sig_ls(c): classic_enter("LS", c, dict(meta, signal="new_launch"))
+                    if enabled("S6_CGRAD") and sig_c_grad(c, "S6_CGRAD"): classic_enter("S6_CGRAD", c, dict(meta, signal="momentum_confirmation"))
                 CYCLE["dex"] = {"ts": time.time(), "found": len(found), "evaluated": len(fresh), "secs": round(time.time() - t0, 1), "regime": REG["why"]}
                 log.info("cycle dex: %d pump candidates, %d evaluated, regime=%s SOL=$%s (%.0fs)", len(found), len(fresh), REG["why"], MKT["sol_usd"], time.time() - t0)
         except Exception as e:
@@ -481,6 +503,9 @@ def dex_loop():
 
 # ------------------------------------------------------------------ pipeline 2: watched wallets -> COPY
 LEAD_SELL = collections.defaultdict(dict)
+LEAD_BUY = collections.defaultdict(dict)        # mint -> {wallet label: last buy ts} (S6 confluence)
+CONFIRM_Q = []                                  # S6_CONFIRM: pending price confirmations
+COPY_AGENTS = ("COPY", "S6_COPY", "S6_CONFL", "S6_CONFIRM")
 SIGQ = queue.Queue()
 WALLETS_F = os.path.join(HERE, "wallets.toml")
 
@@ -493,9 +518,34 @@ def load_wallets():
         return []
 
 
+def s6_confirm_due():
+    """S6_CONFIRM: buy only if, confirm_seconds after the watched wallet's buy, the price is within [confirm_min_x, confirm_max_x]."""
+    now = time.time()
+    due = [q for q in CONFIRM_Q if q["due"] <= now]
+    for q in due:
+        CONFIRM_Q.remove(q)
+        S, m = AG["S6_CONFIRM"], q["mint"]
+        if not enabled("S6_CONFIRM") or m in A["positions"] or m in TRADED:
+            continue
+        c = build_cand(m, sources.ds_pairs([m]).get(m), "whale:" + q["label"])
+        if not c or not valid_px(c.get("mark_sol")):
+            record("S6_CONFIRM", m, q["symbol"], "?", False, ["confirm_no_price"], {"wallets": [q["label"]], "signal": "copy_confirmed"}); continue
+        x = c["mark_sol"] / q["p0"]
+        meta = {"source": "whale_monitor", "wallets": [q["label"]], "signal": "copy_confirmed", "confirm_x": round(x, 3), "leader_buy_sol": q["value_sol"]}
+        if not S["confirm_min_x"] <= x <= S["confirm_max_x"]:
+            AST["S6_CONFIRM"]["signals"] += 1
+            record("S6_CONFIRM", m, c["symbol"], c["phase"], False, [f"not_confirmed({x:.2f}x_after_{S['confirm_seconds']}s)"], meta); continue
+        classic_enter("S6_CONFIRM", c, meta)
+
+
 def copy_worker(cw):
     wm = os.path.getmtime(WALLETS_F) if os.path.exists(WALLETS_F) else 0
     while not STOP.is_set():
+        try:
+            if CONFIRM_Q:
+                s6_confirm_due()
+        except Exception as e:
+            log.exception("confirm error %s", e)
         try:
             m_ = os.path.getmtime(WALLETS_F) if os.path.exists(WALLETS_F) else 0
             if m_ != wm:
@@ -509,7 +559,9 @@ def copy_worker(cw):
             m = s["mint"]
             if s["type"] == "copy_buy":
                 GLOBAL["leader_buys"] += 1
-                if not enabled("COPY"):
+                LEAD_BUY[m][s["label"]] = time.time()
+                want = [a for a in COPY_AGENTS if enabled(a)]     # V1/S5 host only COPY: unchanged behaviour
+                if not want:
                     continue
                 if not m.endswith("pump") and m not in COINS:
                     GLOBAL["leader_buy_not_pump"] += 1
@@ -521,7 +573,18 @@ def copy_worker(cw):
                     continue
                 log.info("leader %s bought %s (%s) [%s] ~%.2f SOL liq=$%.0f", s["label"], c["symbol"], m[:8], c["phase"], s["value_sol"], c["liq"])
                 SEEN[m] = time.time()
-                classic_enter("COPY", c, {"source": "whale_monitor", "wallets": [s["label"]], "signal": "copy", "leader_buy_sol": round(s["value_sol"], 3)})
+                if "COPY" in want:
+                    classic_enter("COPY", c, {"source": "whale_monitor", "wallets": [s["label"]], "signal": "copy", "leader_buy_sol": round(s["value_sol"], 3)})
+                if "S6_CONFL" in want:
+                    S = AG["S6_CONFL"]
+                    labs = sorted(l for l, t in LEAD_BUY[m].items() if time.time() - t <= S["window_minutes"] * 60)
+                    if len(labs) >= S["min_wallets"]:
+                        classic_enter("S6_CONFL", c, {"source": "whale_monitor", "wallets": labs, "signal": "confluence", "leader_buy_sol": round(s["value_sol"], 3)})
+                if "S6_COPY" in want and s["label"] not in AG["S6_COPY"].get("exclude_wallets", []):
+                    classic_enter("S6_COPY", c, {"source": "whale_monitor", "wallets": [s["label"]], "signal": "copy", "leader_buy_sol": round(s["value_sol"], 3)})
+                if "S6_CONFIRM" in want and valid_px(c.get("mark_sol")) and m not in TRADED and not any(q["mint"] == m for q in CONFIRM_Q):
+                    CONFIRM_Q.append({"due": time.time() + AG["S6_CONFIRM"]["confirm_seconds"], "mint": m, "label": s["label"], "symbol": c["symbol"],
+                                      "p0": c["mark_sol"], "value_sol": round(s["value_sol"], 3)})
             elif s["type"] == "copy_sell":
                 GLOBAL["leader_sells"] += 1
                 LEAD_SELL[m][s["label"]] = time.time()
@@ -529,6 +592,10 @@ def copy_worker(cw):
                 if p and p["agent"] == "COPY" and s["label"] in p["wallets"] and AG["COPY"].get("exit_when_leader_sells"):
                     if not sell(m, 1, "whale_distribution", True):
                         p["pending_exit"] = "whale_distribution"
+                elif (p and p["agent"].startswith("S6_") and s["label"] in p["wallets"] and AG[p["agent"]].get("exit_when_leader_sells")
+                      and not p.get("tp_done")):          # S6: leader sold before our 2x -> out; after 2x the moonbag keeps its own exits
+                    if not sell(m, 1, "leader_sold", True):
+                        p["pending_exit"] = "leader_sold"
         except Exception as e:
             log.exception("copy signal error %s", e)
 
@@ -926,14 +993,14 @@ if GATE.day is None:
     GATE.day_start(time.time(), equity())
 update_sol()
 CW = None
-if "COPY" in AG:
+if set(COPY_AGENTS) & set(AG):
     shim = {"rpc": {"url": V1CFG["rpc"]["url"]}, "copytrade": {"wallets": load_wallets(), "poll_seconds": V1CFG["copytrade"]["poll_seconds"],
             "min_followed_buy_sol": V1CFG["copytrade"]["min_followed_buy_sol"]}}
     CW = CopyWatcher(shim, SIGQ.put, GLOBAL)
     CW.start()
     threading.Thread(target=copy_worker, args=(CW,), daemon=True).start()
 loops = [monitor_loop, state_loop]
-if {"V1_SNIPE", "V1_SCANNER", "C_GRAD", "LS"} & set(AG): loops.append(dex_loop)
+if {"V1_SNIPE", "V1_SCANNER", "C_GRAD", "LS", "S6_CGRAD"} & set(AG): loops.append(dex_loop)
 if "M4_SCAN" in AG: loops.append(m4_loop)
 if "REVIVAL" in AG: loops.append(revival_loop)
 for f in loops:

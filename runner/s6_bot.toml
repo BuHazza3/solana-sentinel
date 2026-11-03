@@ -1,0 +1,22 @@
+# S6 Combo bot (PAPER ONLY): one 1 SOL paper bankroll shared by its sub-agents. pump.fun tokens only, no entry above $1M market cap.
+# 8% of cash per trade (max 0.08 SOL, min 0.03 SOL, keep 0.05 SOL), max 4 open, no new trades for the rest of the Dubai day once down 10%.
+[general]
+paper = true
+bot = "S6"
+title = "S6 Combo"
+start_balance_sol = 1.0
+[risk]
+sizing = "v1"
+position_pct = 8
+max_position_sol = 0.08
+min_position_sol = 0.03
+reserve_sol = 0.05
+max_open = 4
+daily_stop_pct = 10.0
+tz_offset_hours = 4
+max_mcap_usd = 1000000           # hard cap for every S6 entry (each agent may set a lower one)
+[agents]                         # all ON by default (AK asked for this strategy); the app's switches override this
+S6_COPY = true
+S6_CONFL = true
+S6_CONFIRM = true
+S6_CGRAD = true

@@ -23,7 +23,7 @@ def seal(aes, obj, iv=None):   # used by tests / tools; the app does the same in
 
 def allowed_agents(bot_dir):
     out = {}
-    for b in ("V1", "S5"):
+    for b in ("V1", "S5", "S6"):
         try:
             out[b] = set(tomllib.load(open(os.path.join(bot_dir, f"{b.lower()}_bot.toml"), "rb"))["agents"]) | {"_master"}
         except (OSError, ValueError, KeyError):

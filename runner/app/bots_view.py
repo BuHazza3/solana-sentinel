@@ -1,4 +1,4 @@
-"""App view of the two multi-agent paper bots (V1 and S5). READ-ONLY over <BOT_DIR>/data/{v1,s5}_bot_*.
+"""App view of the multi-agent paper bots (V1, S5 and S6). READ-ONLY over <BOT_DIR>/data/{v1,s5,s6}_bot_*.
 Each account = one shared 1 SOL paper bankroll; agents = its sub-agents (with their on/off switch and P/L) + the risk manager."""
 import json, os, re, sqlite3, time, tomllib
 import agent_exits_plan
@@ -12,12 +12,16 @@ EMO_DESC = {
     "LS": "Fresh bonding-curve launches (10–85% progress, ≥25 buys in 5 min), 5-min max hold",
     "M4_SCAN": "New tokens with real volume after pump.fun anti-rug checks; pulls initials at 2x",
     "REVIVAL": "Quiet coin ≥30 min old, ≥50% below its peak, wakes up with ≥4 SOL of buying",
+    "S6_COPY": "Buys when a watched wallet buys ≥0.3 SOL (V1 rug filter, ≤$1M market cap, slingoor not copied); out if that wallet sells before 2x",
+    "S6_CONFL": "Buys when 2+ different watched wallets bought the same token within 60 min (V1 rug filter, ≤$1M market cap)",
+    "S6_CONFIRM": "After a watched wallet buys, waits 3 min and buys only if the price is up 5–50% (V1 rug filter, ≤$1M market cap)",
+    "S6_CGRAD": "Momentum C on graduated tokens (market gate + safety score + reward/risk ≥2), ≤$1M market cap",
 }
 
 
 def cfgs():
     A = tomllib.load(open(os.path.join(BOT, "agents.toml"), "rb"))
-    B = {b: tomllib.load(open(os.path.join(BOT, f"{b.lower()}_bot.toml"), "rb")) for b in ("V1", "S5")}
+    B = {b: tomllib.load(open(os.path.join(BOT, f"{b.lower()}_bot.toml"), "rb")) for b in ("V1", "S5", "S6") if os.path.exists(os.path.join(BOT, f"{b.lower()}_bot.toml"))}
     return A, B
 
 
@@ -97,6 +101,11 @@ def build(bot, sol_at, reg_pts, sol_usd, imgs_fn, plain, phase_split):
         eng = (AG.get(a) or {}).get("exit", {}).get("engine")
         if eng == "m4":
             x["stage"] = h.get("stage")
+        elif eng == "card" and pl.get("take_profits") and (AG.get(a) or {}).get("exit", {}).get("trail_after_tp_pct"):
+            X6 = AG[a]["exit"]
+            x["status"] = (f"Stake taken out at {X6['take_profits'][0][0]:g}x ✓ · {x['left_pct']:.0f}% left rides · trailing {X6['trail_after_tp_pct']}% · all out at {X6['take_profits'][-1][0]:g}x"
+                           if (h.get("tp_done") or 0) > 0 else
+                           f"Stop −{X6['stop_loss_pct']}% · stake out at {X6['take_profits'][0][0]:g}x · max {X6['max_hold_minutes']} min" + (f" · copying {', '.join(h['wallets'])}" if h.get("wallets") else ""))
         elif eng == "card":
             x["status"] = (f"TP1 taken ✓ · {x['left_pct']:.0f}% left · trailing stop {pl.get('trailing_stop_pct')}%" if (h.get("tp_done") or 0) > 0 else
                            f"Stop −{pl.get('stop_loss_pct')}% · sells half at +{pl.get('take_profit_pct')}% · max {pl.get('max_hold_minutes')} min")
@@ -127,14 +136,18 @@ def build(bot, sol_at, reg_pts, sol_usd, imgs_fn, plain, phase_split):
         task = (f"holding {', '.join(h['symbol'] for h in opn)}" if opn else
                 "switched off: no new entries" if not (on and master) else
                 {"COPY": f"watching {st.get('wallets_watched', 0)} wallets for buys", "REVIVAL": "watching recently traded coins for a revival",
-                 "M4_SCAN": "scanning new pump.fun tokens", "LS": "scanning fresh launches", "C_GRAD": "scanning graduated tokens for momentum"}.get(a, "scanning new pump.fun tokens"))
+                 "M4_SCAN": "scanning new pump.fun tokens", "LS": "scanning fresh launches", "C_GRAD": "scanning graduated tokens for momentum",
+                 "S6_COPY": f"watching {st.get('wallets_watched', 0)} wallets for buys", "S6_CONFL": "waiting for 2+ watched wallets to buy the same token",
+                 "S6_CONFIRM": "checking watched-wallet buys 3 min later", "S6_CGRAD": "scanning graduated tokens ≤$1M for momentum"}.get(a, "scanning new pump.fun tokens"))
         cards.append({"key": a, "title": S["title"], "desc": EMO_DESC.get(a, S["origin"]), "origin": S["origin"], "used": True, "toggle": True, "on": on,
                       "effective": on and master, "task": task, "last": last, "signals": n or 0, "approved": int(ap or 0), "trades": len(t), "wins": len(tw),
                       "win_rate": info["win_rate"], "pnl_sol": info["pnl_sol"], "open": len(opn), "last_ts": mx, "phases": phase_split(t), "legacy": info["legacy"]})
     peak = max([e for _, e in series] + [st["start"]])
     dd = (peak - eq) / peak * 100 if peak else 0
     R = BC["risk"]
-    rdesc = (f"{R['position_pct']}% of cash per trade (max {R['max_position_sol']} SOL) · max {R['max_open']} open" if R["sizing"] == "v1" else
+    rdesc = (f"{R['position_pct']}% of cash per trade (max {R['max_position_sol']} SOL) · max {R['max_open']} open"
+             + (f" · daily auto-stop −{R['daily_stop_pct']:g}%" if R.get("daily_stop_pct") else "") + (f" · entries ≤${R['max_mcap_usd'] / 1e6:g}M market cap" if R.get("max_mcap_usd") else "")
+             if R["sizing"] == "v1" else
              f"{R['risk_per_trade_pct']:g}% risk per trade · max {R['max_open']} open · daily auto-stop −{R['daily_stop_pct']:g}%")
     cards.append({"key": "RISK", "title": "Risk manager", "desc": "Shared bankroll: " + rdesc, "used": True,
                   "task": f"HALTED: {st['halted']}" if st.get("halted") else f"{len(holdings)}/{R['max_open']} positions open · today {st.get('day_pnl_pct', 0):+.2f}%",
@@ -177,18 +190,25 @@ def rules():
         X = S["exit"]
         if X["engine"] == "m4":
             ex = f"Stop −{X['stop_loss_pct']}%; at {X['initials_at_x']:g}x sells enough to get the SOL back, the rest trails {X['moonbag_trail_pct']}% (never below entry), all out at {X['moonbag_cap_x']:g}x; max hold {X['max_hold_minutes']}/{X['moonbag_max_hold_minutes']} min."
+        elif X["engine"] == "card" and X.get("trail_after_tp_pct"):
+            ex = (f"Stop −{X['stop_loss_pct']}%" + (f"; once up {round((X['trail_arm_x'] - 1) * 100)}% a {X['trail_pct']}% trailing stop protects the gain" if X.get("trail_arm_x") else "")
+                  + f"; at {X['take_profits'][0][0]:g}x sells {X['take_profits'][0][1] * 100:.0f}% (the stake back + costs), the rest rides with a {X['trail_after_tp_pct']}% trailing stop"
+                  + f" and is all sold at {X['take_profits'][-1][0]:g}x; max hold {X['max_hold_minutes']} min ({X.get('max_hold_after_tp_minutes', X['max_hold_minutes'])} min after 2x).")
         elif X["engine"] == "card":
             ex = f"Stop −{X['stop_loss_pct']}%; sells half at {X['take_profits'][0][0]:g}x, the rest at {X['take_profits'][-1][0]:g}x or on a {X['trail_pct']}% trailing stop; max hold {X['max_hold_minutes']} min."
         else:
             ex = (f"Stop −{X['stop_loss_pct']}%, take profit +{X['take_profit_pct']}%" + (f", trailing {X['trailing_stop_pct']}% after +{X['trailing_activate_pct']}%" if X.get("trailing_stop_pct") else "")
                   + (f", break-even stop after +{X['breakeven_at_pct']}%" if X.get("breakeven_at_pct") else "") + f", max hold {X['max_hold_minutes']} min"
                   + (f", exit if liquidity drops {X['liq_drop_exit_pct']}%" if X.get("liq_drop_exit_pct") else "") + ".")
-        hosts = [b for b in ("V1", "S5") if a in B[b]["agents"]]
-        out.append({"title": S["title"], "key": a, "lines": [EMO_DESC.get(a, ""), "Exits (unchanged from its original bot): " + ex,
+        hosts = [b for b in B if a in B[b]["agents"]]
+        if not hosts:
+            continue
+        out.append({"title": S["title"], "key": a, "lines": [EMO_DESC.get(a, ""), ("Exits (S6 rule): " if a.startswith("S6_") else "Exits (unchanged from its original bot): ") + ex,
                                                               f"From: {S['origin']}. Runs in: {', '.join(hosts)}."]})
     out.append({"title": "Shared bankroll & limits", "lines": [
         "V1: one 1 SOL paper bankroll for all its sub-agents; 15% of cash per trade (max 0.15 SOL, min 0.05), max 3 open.",
         "S5: one 1 SOL paper bankroll for all its sub-agents; 1% of equity at risk per trade (via each sub-agent's own stop, max 10% per position), max 3 open, no new trades for the rest of the Dubai day once it is down 3%.",
+        "S6: one 1 SOL paper bankroll for its 4 sub-agents; 8% of cash per trade (max 0.08 SOL, min 0.03), max 4 open, no new trades for the rest of the Dubai day once it is down 10%; pump.fun tokens only, no entry above $1M market cap.",
         "One position per token per bot; a token is not bought twice (S5 Revival: 60 s cool-down)."]})
     out.append({"title": "On/off switches", "lines": [
         "Each sub-agent and each bot has a switch in the Agents tab. Off = no new entries; open positions keep their exits.",

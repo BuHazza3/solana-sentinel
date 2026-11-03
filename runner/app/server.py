@@ -167,7 +167,7 @@ def build_state():
     now = time.time()
     accounts, errs = {}, {}
     sol_usd = None
-    for b in ("V1", "S5"):
+    for b in ("V1", "S5", "S6"):
         try:
             a = bots_view.build(b, sol_at, [], sol_usd or sol_price(), token_info, plain, phase_split)
             if a:
@@ -179,7 +179,7 @@ def build_state():
     alive = any(a["alive"] for a in accounts.values())
     started = min([a["started"] for a in accounts.values()] or [now])
     mt = 0
-    for b in ("v1", "s5"):
+    for b in ("v1", "s5", "s6"):
         try:
             mt = max(mt, os.path.getmtime(os.path.join(BOT, "data", f"{b}_bot_state.json")))
         except OSError:
