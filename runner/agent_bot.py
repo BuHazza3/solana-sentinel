@@ -970,6 +970,12 @@ def write_state(eq):
                                         "rug_score", "signal")}
             hs.append(h)
         halted = (GATE.day is not None and GATE.day_pnl_pct(eq) <= -RK.get("daily_stop_pct", 1e9))
+        broke = None                                   # paper cash too small for the bot's own minimum trade size -> it can never enter again
+        if RK.get("sizing") == "v1" and not hs:
+            can = min(A["balance"] * RK["position_pct"] / 100, RK["max_position_sol"], A["balance"] - RK["reserve_sol"])
+            if can < RK["min_position_sol"]:
+                broke = (f"paper balance {A['balance']:.4f} SOL is too small: {RK['position_pct']:g}% = {max(can, 0):.4f} SOL "
+                         f"< minimum trade {RK['min_position_sol']:g} SOL, so no new entries (needs a paper bankroll reset)")
         tg = TOG.refresh()
         agents = {}
         for a, S in AG.items():
@@ -978,7 +984,7 @@ def write_state(eq):
         st = {"run": RUN, "ts": time.time(), "pid": os.getpid(), "bot": BOT, "title": BCFG["general"]["title"], "equity": eq, "balance": A["balance"],
               "start": A["start"], "open": len(hs), "closed_n": A["closed_n"], "pnl": A["pnl"], "holdings": hs, "sol_usd": MKT["sol_usd"],
               "regime": {"ok": REG["ok"], "why": REG["why"], "pc": REG.get("pc")}, "day_pnl_pct": GATE.day_pnl_pct(eq),
-              "halted": f"daily auto-stop: day at {GATE.day_pnl_pct(eq):.1f}% (limit -{RK['daily_stop_pct']:g}%)" if halted else None,
+              "halted": (f"daily auto-stop: day at {GATE.day_pnl_pct(eq):.1f}% (limit -{RK['daily_stop_pct']:g}%), resumes 00:00 Dubai" if halted else broke),
               "switches": tg, "switch_rev": TOG.rev(), "agents": agents, "risk": RK, "counters": dict(GLOBAL.most_common(40)), "cycles": CYCLE,
               "wallets_watched": len(CW.wallets) if CW else 0}
     tmp = f"{STATE_F}.{threading.get_ident()}.tmp"
