@@ -407,7 +407,7 @@ def classic_enter(agent, c, meta):
     if kind == "c" and S.get("use_regime_gate") and not REG["ok"]: R.append("F_regime_cash:" + REG["why"])
     R += bot_gate(agent, c["mint"])
     liq = (pair.get("liquidity") or {}).get("usd") or 0
-    min_liq = V1CFG["filter"]["min_liquidity_usd"] if kind == "v1" else S["min_liquidity_usd"]
+    min_liq = S.get("min_liquidity_usd", V1CFG["filter"]["min_liquidity_usd"]) if kind == "v1" else S["min_liquidity_usd"]   # S6 copy agents set their own floor; V1 agents use config.toml
     if liq < min_liq: R.append(f"liquidity_below_min({liq:.0f}<{min_liq})")
     if time.time() - c["pair_ts"] > 90: R.append("stale_market_data")
     if report is None and kind != "v1": R.append("security_data_unavailable")
@@ -423,7 +423,8 @@ def classic_enter(agent, c, meta):
         record(agent, c["mint"], c["symbol"], c["phase"], False, R, {"stage": "pre", **meta}); return
     score, comp = None, None
     if kind == "v1":
-        ok, rr_, info = rugfilter.check(pair, report, V1CFG)
+        cfg = V1CFG if "min_liquidity_usd" not in S else dict(V1CFG, filter=dict(V1CFG["filter"], min_liquidity_usd=S["min_liquidity_usd"]))
+        ok, rr_, info = rugfilter.check(pair, report, cfg)
         if not ok:
             record(agent, c["mint"], c["symbol"], c["phase"], False, ["v1_filter:" + r for r in rr_], dict(info, **meta)); return
         comp = info

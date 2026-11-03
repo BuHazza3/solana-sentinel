@@ -100,7 +100,8 @@ fees = "snipe"
 exit_when_leader_sells = true          # only before the first take-profit; the moonbag rides
 exclude_wallets = ["slingoor"]         # replay: 26 of 49 copy signals, -0.32 SOL (in- and out-of-sample negative)
 max_mcap_usd = 1000000
-min_mcap_usd = 15000
+min_mcap_usd = 5000                     # AK 3 Nov: floor lowered from $15K
+min_liquidity_usd = 5000               # AK 3 Nov: own floor (was V1's $20K)
 exit = { engine = "card", stop_loss_pct = 15, take_profits = [[2.0, 0.55], [5.0, 1.0]], trail_pct = 12, trail_arm_x = 1.25, trail_after_tp_pct = 30, max_hold_minutes = 30, max_hold_after_tp_minutes = 120, price_lost_seconds = 180 }
 [agent.S6_CGRAD]
 origin = "C_GRAD (ORIGINAL + REVISED) · small positive result (+0.005 SOL, 5 trades)"
@@ -131,7 +132,8 @@ exit_when_leader_sells = true
 min_wallets = 2                        # distinct watched wallets that bought the same token ...
 window_minutes = 60                    # ... within this window (all watched wallets count, slingoor included)
 max_mcap_usd = 1000000
-min_mcap_usd = 15000
+min_mcap_usd = 5000                     # AK 3 Nov: floor lowered from $15K
+min_liquidity_usd = 5000               # AK 3 Nov: own floor (was V1's $20K)
 exit = { engine = "card", stop_loss_pct = 15, take_profits = [[2.0, 0.55], [5.0, 1.0]], trail_pct = 12, trail_arm_x = 1.25, trail_after_tp_pct = 30, max_hold_minutes = 30, max_hold_after_tp_minutes = 120, price_lost_seconds = 180 }
 [agent.S6_CONFIRM]
 origin = "NEW · copy-trade with a 3-minute price confirmation"
@@ -143,5 +145,6 @@ confirm_seconds = 180                  # after a watched wallet buys, wait 3 min
 confirm_min_x = 1.05                   # ... and only buy if the price is +5% ...
 confirm_max_x = 1.5                    # ... to +50% vs the price when the wallet bought (not dumped, not already vertical)
 max_mcap_usd = 1000000
-min_mcap_usd = 15000
+min_mcap_usd = 5000                     # AK 3 Nov: floor lowered from $15K
+min_liquidity_usd = 5000               # AK 3 Nov: own floor (was V1's $20K)
 exit = { engine = "card", stop_loss_pct = 15, take_profits = [[2.0, 0.55], [5.0, 1.0]], trail_pct = 12, trail_arm_x = 1.25, trail_after_tp_pct = 30, max_hold_minutes = 30, max_hold_after_tp_minutes = 120, price_lost_seconds = 180 }
