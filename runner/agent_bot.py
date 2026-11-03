@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """MULTI-AGENT PAPER BOT (PAPER ONLY: no wallet, no keys, no transactions). One process per bot:
   python3 agent_bot.py --bot V1     (v1_bot.toml)     python3 agent_bot.py --bot S5     (s5_bot.toml)     python3 agent_bot.py --bot S6     (s6_bot.toml)
+  python3 agent_bot.py --bot S7     (s7_bot.toml: copy-trade only, copies the best-ranked watched wallets, see s7_rank.py)
 Each bot has ONE 1 SOL paper bankroll shared by its sub-agents (agents.toml). Every sub-agent keeps its own entry logic and
 its own exits from the bot it came from (V1_SNIPER, ORIGINAL/REVISED, M4, S5); the host applies the bot's sizing and limits.
 Switches (data/agent_toggles.json, written only by the app's authenticated command channel): off = no new entries for that
@@ -14,9 +15,10 @@ import s5_core as C
 import s5_signals as S5
 import agent_exits as EXI
 import agent_toggles
+import s7_rank
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--bot", required=True, choices=["V1", "S5", "S6"])
+ap.add_argument("--bot", required=True, choices=["V1", "S5", "S6", "S7"])
 ap.add_argument("--new-run", action="store_true")
 args = ap.parse_args()
 BOT = args.bot
@@ -81,7 +83,7 @@ CYCLE = {}
 
 # ------------------------------------------------------------------ the shared bankroll (persisted; restart resumes)
 A = {"balance": BCFG["general"]["start_balance_sol"], "start": BCFG["general"]["start_balance_sol"], "positions": {}, "traded": [], "closed_n": 0,
-     "pnl": 0.0, "day": None, "day_eq": None, "cooldown": {}, "agent_pnl": {}, "agent_n": {}}
+     "pnl": 0.0, "day": None, "day_eq": None, "cooldown": {}, "agent_pnl": {}, "agent_n": {}, "wallet_own": {}}
 if os.path.exists(ACCT_F):
     try:
         s = json.load(open(ACCT_F))
@@ -129,6 +131,8 @@ def size_for(agent):
     if RK["sizing"] == "v1":
         s = min(A["balance"] * RK["position_pct"] / 100, RK["max_position_sol"], A["balance"] - RK["reserve_sol"])
         return s if s >= RK["min_position_sol"] else 0.0
+    if RK["sizing"] == "tier":                      # S7: size by the copied wallet's rank tier (the agent's tier)
+        return s7_rank.size_for_tier(AG[agent].get("tier"), A["balance"], RK)
     s = C.position_size(eq, X["stop_loss_pct"] / 100, RK["risk_per_trade_pct"], RK["max_position_pct"] / 100)
     return s if A["balance"] - s - FEE[agent] - RENT > 0 else 0.0
 
@@ -281,6 +285,8 @@ def sell(mint, frac, reason, final):
         A["pnl"] += pnl
         A["agent_pnl"][ag] = A["agent_pnl"].get(ag, 0.0) + pnl
         A["agent_n"][ag] = A["agent_n"].get(ag, 0) + 1
+        if ag in S7_AGENTS and p.get("wallets"):        # S7 re-ranks the wallet from its own closed trades
+            A["wallet_own"].setdefault(p["wallets"][0], []).append({"ts": round(closed), "ret": round(pnl / p["size_sol"], 4), "sym": p["symbol"]})
         dbx("INSERT INTO trades VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (RUN, BOT, ag, p["phase"], mint, p["symbol"], p["opened"], closed, p["size_sol"],
                                                                           p["recovered_sol"], p["fees"], pnl, rec["pnl_pct"], reason, json.dumps(rec, default=str)))
         csv.writer(open(CSV, "a", newline="")).writerow([RUN, BOT, ag, p["phase"], p["symbol"], mint, round(p["opened"]), round(closed), round(closed - p["opened"]),
@@ -506,7 +512,9 @@ def dex_loop():
 LEAD_SELL = collections.defaultdict(dict)
 LEAD_BUY = collections.defaultdict(dict)        # mint -> {wallet label: last buy ts} (S6 confluence)
 CONFIRM_Q = []                                  # S6_CONFIRM: pending price confirmations
-COPY_AGENTS = ("COPY", "S6_COPY", "S6_CONFL", "S6_CONFIRM")
+COPY_AGENTS = ("COPY", "S6_COPY", "S6_CONFL", "S6_CONFIRM", "S7_TOP", "S7_NEXT")
+S7_AGENTS = ("S7_TOP", "S7_NEXT")
+S7_TIER_AGENT = {1: "S7_TOP", 2: "S7_NEXT"}
 SIGQ = queue.Queue()
 WALLETS_F = os.path.join(HERE, "wallets.toml")
 
@@ -517,6 +525,39 @@ def load_wallets():
     except Exception as e:
         log.warning("wallets.toml unreadable: %s", e)
         return []
+
+
+S7SEED = {}
+if set(S7_AGENTS) & set(AG):
+    try:
+        S7SEED = json.load(open(os.path.join(HERE, BCFG["ranking"]["seed_file"]))).get("wallets") or {}
+    except Exception as e:
+        print("S7 seed unreadable:", e)
+
+
+def s7_ranking(labels=None):
+    """Current S7 wallet ranking (seed + S7's own closes); see s7_rank.py."""
+    if labels is None:
+        labels = [w.get("label", w["address"][:6]) for w in (CW.wallets if CW else load_wallets())]
+    cfg = {k: v for k, v in (BCFG.get("ranking") or {}).items() if k in s7_rank.DEFAULT}
+    return s7_rank.rank(labels, S7SEED, A["wallet_own"], cfg)
+
+
+def s7_on_buy(c, s):
+    """S7: copy the buy only if the wallet is ranked; tier 1 -> S7_TOP (bigger size), tier 2 -> S7_NEXT (smaller size)."""
+    rows = s7_ranking()
+    row = next((r for r in rows if r["wallet"] == s["label"]), None)
+    tier = row["tier"] if row else 0
+    meta = {"source": "whale_monitor", "wallets": [s["label"]], "signal": "copy", "leader_buy_sol": round(s["value_sol"], 3), "tier": tier}
+    if not tier:
+        if enabled("S7_NEXT") or enabled("S7_TOP"):
+            ag = "S7_NEXT" if "S7_NEXT" in AG else "S7_TOP"
+            AST[ag]["signals"] += 1
+            record(ag, c["mint"], c["symbol"], c["phase"], False, [f"wallet_not_copied({s['label']}: {(row or {}).get('why') or 'not ranked'})"], meta)
+        return
+    ag = S7_TIER_AGENT[tier]
+    if ag in AG and enabled(ag):
+        classic_enter(ag, c, meta)
 
 
 def s6_confirm_due():
@@ -583,6 +624,8 @@ def copy_worker(cw):
                         classic_enter("S6_CONFL", c, {"source": "whale_monitor", "wallets": labs, "signal": "confluence", "leader_buy_sol": round(s["value_sol"], 3)})
                 if "S6_COPY" in want and s["label"] not in AG["S6_COPY"].get("exclude_wallets", []):
                     classic_enter("S6_COPY", c, {"source": "whale_monitor", "wallets": [s["label"]], "signal": "copy", "leader_buy_sol": round(s["value_sol"], 3)})
+                if any(a in want for a in S7_AGENTS):
+                    s7_on_buy(c, s)
                 if "S6_CONFIRM" in want and valid_px(c.get("mark_sol")) and m not in TRADED and not any(q["mint"] == m for q in CONFIRM_Q):
                     CONFIRM_Q.append({"due": time.time() + AG["S6_CONFIRM"]["confirm_seconds"], "mint": m, "label": s["label"], "symbol": c["symbol"],
                                       "p0": c["mark_sol"], "value_sol": round(s["value_sol"], 3)})
@@ -593,8 +636,8 @@ def copy_worker(cw):
                 if p and p["agent"] == "COPY" and s["label"] in p["wallets"] and AG["COPY"].get("exit_when_leader_sells"):
                     if not sell(m, 1, "whale_distribution", True):
                         p["pending_exit"] = "whale_distribution"
-                elif (p and p["agent"].startswith("S6_") and s["label"] in p["wallets"] and AG[p["agent"]].get("exit_when_leader_sells")
-                      and not p.get("tp_done")):          # S6: leader sold before our 2x -> out; after 2x the moonbag keeps its own exits
+                elif (p and p["agent"].startswith(("S6_", "S7_")) and s["label"] in p["wallets"] and AG[p["agent"]].get("exit_when_leader_sells")
+                      and not p.get("tp_done")):          # S6/S7: leader sold before our 2x -> out; after 2x the moonbag keeps its own exits
                     if not sell(m, 1, "leader_sold", True):
                         p["pending_exit"] = "leader_sold"
         except Exception as e:
@@ -977,6 +1020,9 @@ def write_state(eq):
             if can < RK["min_position_sol"]:
                 broke = (f"paper balance {A['balance']:.4f} SOL is too small: {RK['position_pct']:g}% = {max(can, 0):.4f} SOL "
                          f"< minimum trade {RK['min_position_sol']:g} SOL, so no new entries (needs a paper bankroll reset)")
+        if RK.get("sizing") == "tier" and not hs and s7_rank.size_for_tier(1, A["balance"], RK) <= 0:
+            broke = (f"paper balance {A['balance']:.4f} SOL is too small for the minimum trade {RK['min_position_sol']:g} SOL "
+                     f"(keeps {RK['reserve_sol']:g} SOL), so no new entries (needs a paper bankroll reset)")
         tg = TOG.refresh()
         agents = {}
         for a, S in AG.items():
@@ -988,6 +1034,9 @@ def write_state(eq):
               "halted": (f"daily auto-stop: day at {GATE.day_pnl_pct(eq):.1f}% (limit -{RK['daily_stop_pct']:g}%), resumes 00:00 Dubai" if halted else broke),
               "switches": tg, "switch_rev": TOG.rev(), "agents": agents, "risk": RK, "counters": dict(GLOBAL.most_common(40)), "cycles": CYCLE,
               "wallets_watched": len(CW.wallets) if CW else 0}
+        if set(S7_AGENTS) & set(AG):
+            st["wallet_rank"] = [dict(r, net=round(r["net"], 4), pf=round(r["pf"], 2), own_net=round(r["own_net"], 4),
+                                      win_rate=r["win_rate"] and round(r["win_rate"])) for r in s7_ranking()]
     tmp = f"{STATE_F}.{threading.get_ident()}.tmp"
     json.dump(st, open(tmp, "w"), default=str)
     os.replace(tmp, STATE_F)

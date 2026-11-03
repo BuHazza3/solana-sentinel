@@ -76,7 +76,7 @@ def m4_after_initials(p, X):
 
 def card_of(X):
     return dict(stop_pct=X["stop_loss_pct"], tp=[tuple(x) for x in X["take_profits"]], trail_pct=X["trail_pct"], trail_arm_x=X.get("trail_arm_x"), trail_after_tp_pct=X.get("trail_after_tp_pct"), timeout_after_tp_min=X.get("max_hold_after_tp_minutes"),
-                timeout_min=X["max_hold_minutes"], close_below_entry=False, exit_on_graduation=False, exit_after_grad_min=None)
+                timeout_min=X["max_hold_minutes"], stale_min=X.get("no_lift_minutes"), stale_x=X.get("no_lift_x"), close_below_entry=False, exit_on_graduation=False, exit_after_grad_min=None)
 
 
 def card(p, X, now, mark, phase):

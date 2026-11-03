@@ -148,3 +148,33 @@ max_mcap_usd = 1000000
 min_mcap_usd = 5000                     # AK 3 Nov: floor lowered from $15K
 min_liquidity_usd = 5000               # AK 3 Nov: own floor (was V1's $20K)
 exit = { engine = "card", stop_loss_pct = 15, take_profits = [[2.0, 0.55], [5.0, 1.0]], trail_pct = 12, trail_arm_x = 1.25, trail_after_tp_pct = 30, max_hold_minutes = 30, max_hold_after_tp_minutes = 120, price_lost_seconds = 180 }
+
+# ---------------------------------------------------------------- S7 COPY ELITE (s7_bot.toml). PAPER ONLY. Copy-trade only, pump.fun tokens, $5K-$1M market cap.
+# Copies ONLY the watched wallets that rank best (s7_rank.py: replay seed s7_seed.json + S7's own closes, re-ranked on every signal).
+# Tier 1 wallets -> S7_TOP (bigger size), tier 2 -> S7_NEXT (smaller size); everyone else is not copied. Wider -32% stop with smaller sizes.
+# Exit: 55% sold at 2x (stake back), the rest rides a 30% trail from its peak and is all sold at 5x or after 120 min;
+# out when the copied wallet sells before 2x; out at 45 min if it never got to 1.25x. Evidence: /workspace/s7/analysis (thin samples: experiment).
+[agent.S7_TOP]
+origin = "NEW (S7) · copy-trade of the tier-1 ranked wallets"
+title = "S7 top wallets"
+kind = "v1"
+signal = "copy"
+fees = "snipe"
+tier = 1
+exit_when_leader_sells = true          # only before the first take-profit; the moonbag rides
+max_mcap_usd = 1000000
+min_mcap_usd = 5000
+min_liquidity_usd = 5000
+exit = { engine = "card", stop_loss_pct = 32, take_profits = [[2.0, 0.55], [5.0, 1.0]], trail_pct = 30, trail_after_tp_pct = 30, max_hold_minutes = 120, max_hold_after_tp_minutes = 120, no_lift_minutes = 45, no_lift_x = 1.25, price_lost_seconds = 180 }
+[agent.S7_NEXT]
+origin = "NEW (S7) · copy-trade of the tier-2 ranked wallets"
+title = "S7 next wallets"
+kind = "v1"
+signal = "copy"
+fees = "snipe"
+tier = 2
+exit_when_leader_sells = true
+max_mcap_usd = 1000000
+min_mcap_usd = 5000
+min_liquidity_usd = 5000
+exit = { engine = "card", stop_loss_pct = 32, take_profits = [[2.0, 0.55], [5.0, 1.0]], trail_pct = 30, trail_after_tp_pct = 30, max_hold_minutes = 120, max_hold_after_tp_minutes = 120, no_lift_minutes = 45, no_lift_x = 1.25, price_lost_seconds = 180 }

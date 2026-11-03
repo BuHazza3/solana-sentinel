@@ -46,10 +46,10 @@ def _run_of(data, bot):
 
 
 def pack(bot_dir, app_dir):
-    """Returns gzip-tar bytes of everything needed to continue: the bots' (V1, S5, S6) accounts, open positions, history, switches,
+    """Returns gzip-tar bytes of everything needed to continue: the bots' (V1, S5, S6, S7) accounts, open positions, history, switches,
     the retired bots' per-agent summary (legacy_agents.json) and the relay command log."""
     data = os.path.join(bot_dir, "data")
-    runs = {b: _run_of(data, b) for b in ("v1", "s5", "s6")}
+    runs = {b: _run_of(data, b) for b in ("v1", "s5", "s6", "s7")}
     buf = io.BytesIO()
     with tempfile.TemporaryDirectory() as tmp, tarfile.open(fileobj=buf, mode="w:gz") as tar:
         def add(path, arc):
@@ -71,7 +71,7 @@ def pack(bot_dir, app_dir):
                 tar.add(dst, arcname=f"bot/data/{name}")
         add(os.path.join(app_dir, "logs", "toggle_commands.log"), "app/logs/toggle_commands.log")
         meta = os.path.join(tmp, "meta.json")
-        json.dump({"saved": time.time(), "v1_run": runs["v1"], "s5_run": runs["s5"], "s6_run": runs["s6"], "format": 2}, open(meta, "w"))
+        json.dump({"saved": time.time(), "v1_run": runs["v1"], "s5_run": runs["s5"], "s6_run": runs["s6"], "s7_run": runs["s7"], "format": 2}, open(meta, "w"))
         tar.add(meta, arcname="meta.json")
     return buf.getvalue()
 

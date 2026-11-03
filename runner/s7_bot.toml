@@ -1,0 +1,35 @@
+# S7 Copy Elite bot (PAPER ONLY): one 1 SOL paper bankroll, copy-trade only. pump.fun tokens only, $5K-$1M market cap.
+# Size by wallet tier: tier 1 = 10% of cash (max 0.10 SOL), tier 2 = 6% (max 0.06 SOL); min 0.02 SOL, keep 0.05 SOL.
+# With the -32% stop a full stop costs ~3.2% (tier 1) / ~1.9% (tier 2) of cash, about what V1's 15% x -20% stop cost (3%).
+# Max 4 open; no new trades for the rest of the Dubai day once down 10%.
+[general]
+paper = true
+bot = "S7"
+title = "S7 Copy Elite"
+start_balance_sol = 1.0
+[risk]
+sizing = "tier"
+tier1_pct = 10
+tier1_max_sol = 0.10
+tier2_pct = 6
+tier2_max_sol = 0.06
+min_position_sol = 0.02
+reserve_sol = 0.05
+max_open = 4
+daily_stop_pct = 10.0
+tz_offset_hours = 4
+max_mcap_usd = 1000000           # hard cap for every S7 entry
+[ranking]                        # s7_rank.py (see its docstring); seed = s7_seed.json
+seed_file = "s7_seed.json"
+window = 20                      # score on each wallet's last 20 results (seed + S7's own)
+min_trades = 3                   # fewer results -> not copied
+min_pf = 1.0                     # and net > 0
+top_n = 2                        # up to 2 tier-1 wallets ...
+top_min_trades = 5               # ... with >= 5 results ...
+top_min_pf = 1.5                 # ... and profit factor >= 1.5
+max_copied = 5                   # at most 5 wallets copied in total
+drop_consec_losses = 3           # S7's own trades: 3 losses in a row -> dropped
+drop_last_n = 5                  # or negative over its last 5 -> dropped
+[agents]                         # both ON by default (AK asked for this bot); the app's switches override this
+S7_TOP = true
+S7_NEXT = true

@@ -114,7 +114,7 @@ class RiskGate:
 # ---------------------------------------------------------------- exit engine (the strategy card's exits)
 class Position:
     """Card keys: stop_pct, tp=[(x, frac_of_original)], trail_pct, trail_arm_x (None = after first TP), timeout_min,
-    close_below_entry, exit_on_graduation, exit_after_grad_min. Prices are DEX marks; fill costs are applied by the caller.
+    optional stale_min + stale_x (exit if the peak never reached stale_x by stale_min, before the first TP), close_below_entry, exit_on_graduation, exit_after_grad_min. Prices are DEX marks; fill costs are applied by the caller.
     step() takes one candle (open/high/low/close); conservative ordering: stop before take-profit inside a candle."""
 
     def __init__(self, entry_px, opened, card, phase):
@@ -166,6 +166,8 @@ class Position:
         tmo = C["timeout_after_tp_min"] if self.tp_done and C.get("timeout_after_tp_min") else C.get("timeout_min")
         if tmo and ts - self.opened >= tmo * 60:
             return self._close(o, "moonbag_time_exit" if tmo != C.get("timeout_min") else "time_exit")
+        if C.get("stale_min") and not self.tp_done and ts - self.opened >= C["stale_min"] * 60 and self.peak < self.entry * (C.get("stale_x") or 1.0):
+            return self._close(o, "no_lift_time_exit")      # S7: never reached stale_x within stale_min -> out
         if C.get("exit_after_grad_min") is not None and self.grad_ts is not None and ts - self.grad_ts >= C["exit_after_grad_min"] * 60:
             return self._close(o, "time_after_graduation")
         acts = []
