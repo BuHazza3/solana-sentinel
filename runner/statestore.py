@@ -55,7 +55,7 @@ def pack(bot_dir, app_dir):
         def add(path, arc):
             if os.path.exists(path):
                 tar.add(path, arcname=arc)
-        names = ["agent_toggles.json", "legacy_agents.json"]
+        names = ["agent_toggles.json", "legacy_agents.json", "paper_resets_applied.json"]
         for b, run in runs.items():
             names += [f"{b}_bot_account.json", f"{b}_bot_run.txt", f"{b}_bot_trades.csv", f"{b}_bot_state.json"]
             if run: names.append(f"{b}_bot_{run}.log")

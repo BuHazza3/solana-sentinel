@@ -1,0 +1,9 @@
+# One-time PAPER bankroll resets, applied by runner.py at startup (after the saved state is restored, before the bots start).
+# Each id is applied at most once: applied ids are kept in data/paper_resets_applied.json inside the saved state.
+# Paper only. A reset archives the bot's current run (stats + history stay readable under "Before the merge"), then
+# starts a new paper run with the given balance. Switches, sizing, exits, caps and open positions are not changed.
+[[reset]]
+id = "v1-reset-20261103"
+bot = "V1"
+balance_sol = 1.0
+label = "V1 before reset 3 Nov"

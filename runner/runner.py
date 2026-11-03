@@ -16,6 +16,7 @@ import requests
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import statestore  # noqa: E402
+import paper_reset
 
 KEY = os.environ.get("RELAY_KEY", "").strip()
 GHA = os.environ.get("GITHUB_ACTIONS") == "true"
@@ -207,6 +208,10 @@ def main():
         say("no saved state yet (cutover not done) and FRESH is not true: exiting without starting the bots")
         return 0
     say("state restored" if restored else "starting fresh (no saved state)")
+    try:                                     # one-time paper bankroll resets (runner/paper_resets.toml), idempotent across handovers
+        paper_reset.apply_resets(BOT, os.path.join(HERE, "paper_resets.toml"), log=say)
+    except Exception as e:
+        say(f"paper reset skipped: {type(e).__name__}")
     write_status()
 
     py = sys.executable
